@@ -1,65 +1,323 @@
 
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
+#include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <sys/stat.h>
+#include <errno.h> 
+
+#include "util/data_structure/dynamic_string.h"
+#include "util/system.h"
 
 #include "logger.h"
 
 
-static const char* log_level_to_string(log_type type) {
-    switch (type) {
-        case LOG_TYPE_TRACE: return "TRACE";
-        case LOG_TYPE_DEBUG: return "DEBUG";
-        case LOG_TYPE_INFO:  return "INFO";
-        case LOG_TYPE_WARN:  return "WARN";
-        case LOG_TYPE_ERROR: return "ERROR";
-        case LOG_TYPE_FATAL: return "FATAL";
-        default:             return "UNKNOWN";
-    }
+// ============================================================================================================================================
+// format helper
+// ============================================================================================================================================
+
+inline static const char *short_filename(const char *path) {
+
+    const char *s1 = strrchr(path, '/');
+    const char *s2 = strrchr(path, '\\');
+    const char *last = NULL;
+
+    if (s1 && s2) 
+        last = (s1 > s2) ? s1 : s2;
+    else
+        last = s1 ? s1 : s2;
+
+    return last ? last + 1 : path;
 }
+
+static const char* severity_names[] = {
+    "TRACE", "DEBUG", "INFO ", "WARN ", "ERROR", "FATAL"
+};
+
+const char* log_level_to_string(log_type t) {
+
+    if ((int)t < 0 || (size_t)t >= sizeof(severity_names) / sizeof(severity_names[0]))
+        return "UNK";
+    return severity_names[(int)t];
+}
+
+static const char* console_color_table[] = {
+    "\033[90m",                 // TRACE - gray
+    "\033[94m",                 // DEBUG - blue
+    "\033[92m",                 // INFO  - green
+    "\033[93m",                 // WARN  - yellow
+    "\033[91m",                 // ERROR - red
+    "\x1B[1m\x1B[37m\x1B[41m"   // FATAL - bold white on red
+};
+static const char*              console_rest = "\033[0m";
+
+static const char*              default_format = "[$B$T $L] $E $P:$G $C$Z";
+
+static char*                    format_current = NULL;
+
+
+// ============================================================================================================================================
+// thread label map (simple linked list)
+// ============================================================================================================================================
+
+typedef struct thread_label_node {
+    u64                         thread_id;
+    char*                       label;
+    struct thread_label_node*   next;
+} thread_label_node;
+
+static thread_label_node*       s_thread_labels = NULL;
+
+static pthread_mutex_t          s_general_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void register_thread_label(u64 thread_id, const char* label) {
+
+    // TODO: only print this to the log file
+    // printf("registering thread [%ul] under [%s]\n", thread_id, label);
+
+    pthread_mutex_lock(&s_general_mutex);
+    struct thread_label_node* current = s_thread_labels;
+    while (current) {
+        if (current->thread_id == thread_id) {
+            free(current->label);
+            current->label = strdup(label ? label : "");
+            pthread_mutex_unlock(&s_general_mutex);
+            return;
+        }
+        current = current->next;
+    }
+    // not found, append
+    struct thread_label_node* node = malloc(sizeof(*node));
+    node->thread_id = thread_id;
+    node->label = strdup(label ? label : "");
+    node->next = s_thread_labels;
+    s_thread_labels = node;
+    pthread_mutex_unlock(&s_general_mutex);
+}
+
+const char* lookup_thread_label(u64 thread_id) {
+
+    struct thread_label_node* n = s_thread_labels;
+    while (n) {
+        if (n->thread_id == thread_id)
+            return n->label;
+        n = n->next;
+    }
+    return NULL;
+}
+
+
+
 static b8 s_log_to_console = false;
 
+static char* s_log_file_path = NULL;
 
-b8 init_logger(const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode) {
+
+
+// ============================================================================================================================================
+// private functions
+// ============================================================================================================================================
+
+bool flush_log_msg_buffer() {
+    
+    if (s_log_file_path == NULL)
+        return false;
+
+    FILE* fp = fopen(s_log_file_path, "w");
+    if (fp == NULL)
+        BREAK_POINT();          // logger failed to create log file
+
+    fprintf(fp, "## test\n");
+    fclose(fp);
+}
+
+
+// ============================================================================================================================================
+// LOGGER
+// ============================================================================================================================================
+
+
+b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode) {
 
     s_log_to_console = log_to_console;
     // TODO: make sure log file exists [log_dir/main_log_file_name.log]
+
+    const char* exec_path = get_executable_path();
+    if (exec_path == NULL)
+        return false;
+
+    char file_path[256];
+    memset(file_path, '\0', sizeof(file_path));
+    snprintf(file_path, sizeof(file_path), "%s/%s", exec_path, log_dir);
+    // printf("log path: %s\n", file_path);
+
+    if (!mkdir(file_path, 0777) && (errno != EEXIST))
+        BREAK_POINT();          // logger failed to create directory for log files
+
+    memset(file_path, '\0', sizeof(file_path));
+    snprintf(file_path, sizeof(file_path), "%s/%s/%s.log", exec_path, log_dir, log_file_name);
+    s_log_file_path = file_path;
+    // printf("log file path: %s\n", file_path);
+
+    FILE* fp = fopen(s_log_file_path, "w");
+    if (fp == NULL)
+        BREAK_POINT();          // logger failed to create log file
+
+    // TODO: write some basic metadata to logfile
+    fprintf(fp, "## test\n");
+
+    fclose(fp);
+
     // TODO: clear old file if exists and [use_append_mode]
+
+    set_format(log_msg_format);
+
+    return true;
 }
 
 
 b8 shutdown_logger() {
 
+    const bool flush_result = flush_log_msg_buffer();
+
+    return true;
 }
 
 
-void log_message(log_type type, const char* file_name, const char* function_name, const int line, const char* format, ...) {
+//
+void set_format(const char* new_format) {
 
-    // Get current time
-    time_t now = time(NULL);
-    struct tm* t = localtime(&now);
-    char time_buf[20];
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", t);
+    pthread_mutex_lock(&s_general_mutex);
+    free(format_current);
+    if (new_format)
+        format_current = strdup(new_format);
+    else
+        format_current = strdup(default_format);
+    pthread_mutex_unlock(&s_general_mutex);
+}
 
-    const char* color_start = "";
-    const char* color_end = "\033[0m";
-    switch (type) {
-        case LOG_TYPE_TRACE: color_start = "\033[90m"; break; // Gray
-        case LOG_TYPE_DEBUG: color_start = "\033[94m"; break; // Blue
-        case LOG_TYPE_INFO:  color_start = "\033[92m"; break; // Green
-        case LOG_TYPE_WARN:  color_start = "\033[93m"; break; // Yellow
-        case LOG_TYPE_ERROR: color_start = "\033[91m"; break; // Red
-        case LOG_TYPE_FATAL: color_start = "\x1B[1m\x1B[37m\x1B[41m"; break; // Magenta
-        default: break;
+/* initialize default format on load */
+__attribute__((constructor))
+static void _init_default_format(void)      { format_current = strdup(default_format); }
+
+
+// ============================================================================================================================================
+// message formatter
+// ============================================================================================================================================
+
+/* ----------------- main formatter - expects the message text to be already formatted ----------------- */
+void process_log_message_v(log_type type, u64 thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message) {
+    
+    if (!formatted_message)
+        formatted_message = "";
+
+    system_time st = get_system_time();
+
+    // build formatted output according to format_current
+    pthread_mutex_lock(&s_general_mutex);
+    const char* fmt = format_current ? format_current : default_format;
+
+    dyn_str out;
+    ds_init(&out);
+
+    size_t fmt_len = strlen(fmt);
+    for (size_t i = 0; i < fmt_len; ++i) {
+        char c = fmt[i];
+        if (c == '$') {
+            if (i + 1 >= fmt_len) break;
+            char cmd = fmt[++i];
+            switch (cmd) {
+                case 'B': ds_append_str(&out, console_color_table[(int)type]); break;                           // color begin
+                case 'E': ds_append_str(&out, console_rest); break;                                             // color end
+                case 'C': ds_append_str(&out, formatted_message); break;                                        // message content
+                case 'L': ds_append_str(&out, log_level_to_string(type)); break;                                // severity
+                case 'Z': ds_append_char(&out, '\n'); break;                                                    // newline
+                case 'Q': {                                                                                     // thread id or label
+                    const char* label = lookup_thread_label(thread_id);
+                    if (label)  ds_append_str(&out, label);
+                    else        ds_append_fmt(&out, "%lu", thread_id);
+                } break;
+                case 'F': ds_append_str(&out, function_name ? function_name : ""); break;                       // function
+                case 'P': ds_append_str(&out, function_name); break;                                            // short function
+                case 'A': ds_append_str(&out, file_name ? file_name : ""); break;                               // file
+                case 'I': ds_append_str(&out, short_filename(file_name ? file_name : "")); break;               // short file
+                case 'G': ds_append_fmt(&out, "%d", line); break;                                               // line
+                
+                case 'T': ds_append_fmt(&out, "%02d:%02d:%02d", st.hour, st.minute, st.second); break;          // time component
+                case 'H': ds_append_fmt(&out, "%02d", st.hour); break;                                          // time component
+                case 'M': ds_append_fmt(&out, "%02d", st.minute); break;                                        // time component
+                case 'S': ds_append_fmt(&out, "%02d", st.second); break;                                        // time component
+                case 'J': ds_append_fmt(&out, "%03d", st.millisec); break;                                      // time component
+
+                case 'N': ds_append_fmt(&out, "%04d/%02d/%02d", st.year, st.month, st.day); break;              // date component
+                case 'Y': ds_append_fmt(&out, "%04d", st.year); break;                                          // date component
+                case 'O': ds_append_fmt(&out, "%02d", st.month); break;                                         // date component
+                case 'D': ds_append_fmt(&out, "%02d", st.day); break;                                           // date component
+
+                default:                                                                                        // unknown %% - treat literally (append '$' and the char)
+                    ds_append_char(&out, '$');
+                    ds_append_char(&out, cmd);
+                    break;
+            }
+        } else {
+            ds_append_char(&out, c);
+        }
     }
 
-    fprintf(stderr, "%s[%s] %-5s%s ", color_start, time_buf, log_level_to_string(type), color_end);     // Print log header
+    // ensure final message ends with newline
+    if (out.len == 0 || out.buf[out.len - 1] != '\n') ds_append_char(&out, '\n');
 
-    // Handle variable arguments
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
 
-    fprintf(stderr, "\n");
+    // route to stdout or stderr depending on severity
+    if (s_log_to_console) {
+        if ((int)type < LOG_TYPE_WARN) {
+            fputs(out.buf, stdout);
+            fflush(stdout);
+        } else {
+            fputs(out.buf, stderr);
+            fflush(stderr);
+        }
+    }
+
+
+    // TODO: save [out.buf] in holding buffer and write to file if buffer to full
+
+
+    ds_free(&out);
+    pthread_mutex_unlock(&s_general_mutex);
 }
+
+
+//
+void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...) {
+    
+    // Format the user message first (variable args)
+    va_list ap;
+    va_start(ap, message);
+
+    // create a dynamic local buffer for the user's message
+    int needed = vsnprintf(NULL, 0, message, ap);
+    va_end(ap);
+
+    dyn_str msg;
+    ds_init(&msg);
+    if (needed > 0) {
+        ds_ensure(&msg, (size_t)needed);
+        va_start(ap, message);
+        vsnprintf(msg.buf, msg.cap, message, ap);
+        msg.len = (size_t)needed;
+        msg.buf[msg.len] = '\0';
+        va_end(ap);
+    }
+
+    // call the formatter that understands format_current
+    process_log_message_v(type, thread_id, file_name, function_name, line, msg.buf);
+
+    ds_free(&msg);
+}
+
