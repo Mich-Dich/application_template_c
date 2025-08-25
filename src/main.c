@@ -12,5 +12,9 @@ int main(int argc, char const *argv[]) {
     LOG(Error, "Failed to open file");
     LOG(Fatal, "System crash: %s", "rebooting...");
 
+    printf("Before breakpoint\n");
+    BREAK_POINT();
+    printf("After breakpoint (if execution continued)\n");
+
     return 0;
 }

@@ -231,6 +231,23 @@ echo "Binary available at: ${{bin_dir}}/${{project_name}}"
     with open(launch_json_path, "w") as f:
         json.dump(launch_data, f, indent=4)
 
+
+    recommendations_data = {
+        "recommendations": [
+            "ms-vscode.cpptools",
+            "ms-vscode.cpptools-extension-pack",
+            "ms-vscode.cpptools-themes",
+            "twxs.cmake",
+            "ms-vscode.cmake-tools",
+            "emeraldwalk.RunOnSave",
+        ]
+    }
+    launch_json_path = os.path.join(vscode_dir, "extensions.json")
+    with open(launch_json_path, "w") as f:
+        json.dump(recommendations_data, f, indent=4)
+
+
+
     # c_cpp_properties.json         Always define PLATFORM_LINUX, plus one based on build_config
     config_define = {
         "debug": "DEBUG",

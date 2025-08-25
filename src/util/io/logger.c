@@ -17,8 +17,23 @@ static const char* log_level_to_string(log_type type) {
         default:             return "UNKNOWN";
     }
 }
+static b8 s_log_to_console = false;
 
-void log_message(log_type type, const char* format, ...) {
+
+b8 init_logger(const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode) {
+
+    s_log_to_console = log_to_console;
+    // TODO: make sure log file exists [log_dir/main_log_file_name.log]
+    // TODO: clear old file if exists and [use_append_mode]
+}
+
+
+b8 shutdown_logger() {
+
+}
+
+
+void log_message(log_type type, const char* file_name, const char* function_name, const int line, const char* format, ...) {
 
     // Get current time
     time_t now = time(NULL);
