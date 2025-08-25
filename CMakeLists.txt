@@ -1,0 +1,58 @@
+cmake_minimum_required(VERSION 3.15)
+
+# Project name and language
+project(application_template_c C)
+
+# Use C11 by default
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Enable extra warnings (good habit for embedded dev)
+add_compile_options(-Wall -Wextra)
+
+# Allow switching between host builds and cross-compilation
+if(DEFINED CROSS_COMPILE AND CROSS_COMPILE)
+    message(STATUS "Cross-compiling using toolchain file")
+    set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/arm-none-eabi-toolchain.cmake")
+endif()
+
+# Detect platform and architecture
+string(TOLOWER "${CMAKE_SYSTEM_NAME}" PLATFORM_NAME)
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" ARCH_NAME)
+
+# If processor name is empty or generic, fix it
+if(ARCH_NAME STREQUAL "" OR ARCH_NAME STREQUAL "unknown")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(ARCH_NAME "x86_64")
+    else()
+        set(ARCH_NAME "x86")
+    endif()
+endif()
+
+# Use CMAKE_BUILD_TYPE or set default to Debug
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug)
+endif()
+
+# Create a config+platform+arch string
+set(CONFIG_PLATFORM_DIR "${CMAKE_BUILD_TYPE}-${PLATFORM_NAME}-${ARCH_NAME}")
+
+# Set custom output directories
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/${CONFIG_PLATFORM_DIR}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/${CONFIG_PLATFORM_DIR}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/${CONFIG_PLATFORM_DIR}")
+
+# Add include directories
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# Collect all source files automatically
+file(GLOB_RECURSE SOURCES "src/*.c")
+
+# Create the executable
+add_executable(${PROJECT_NAME} ${SOURCES})
+
+# Print helpful info
+message(STATUS "Configuration: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Platform:      ${PLATFORM_NAME}")
+message(STATUS "Architecture:  ${ARCH_NAME}")
+message(STATUS "Output dir:    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
