@@ -10,11 +10,9 @@ int main(int argc, char *argv[]) {
     ASSERT_SS(init_crash_handler())
     LOGGER_REGISTER_THREAD_LABEL("main")
 
-
-    // Example crash triggers (for testing):
-    // *(int*)0 = 0;           // SIGSEGV
-    abort();                // SIGABRT
-    // int x = 1 / 0;          // SIGFPE
+    VALIDATE(init_application(argc, argv), shutdown_logger(); return 1, "", "Failed to init the application")
+    run_application();
+    shutdown_application();
 
     shutdown_crash_handler();
     shutdown_logger();

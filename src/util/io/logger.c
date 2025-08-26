@@ -319,6 +319,8 @@ void process_log_message_v(log_type type, u64 thread_id, const char* file_name, 
 
 //
 void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...) {
+
+    if (strlen(message) == 0) return;           // skip all empty log messages
     
     // Format the user message first (variable args)
     va_list ap;
