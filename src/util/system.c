@@ -6,8 +6,64 @@
 #include <unistd.h>   // for readlink
 #include <limits.h>   // for PATH_MAX
 #include <string.h>   // for strncpy
+#include <errno.h>
+#include <stdint.h>
 
 #include "system.h"
+
+
+
+f64 get_precise_time() {
+
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);                    // CLOCK_MONOTONIC is steady, not affected by system clock changes
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+
+void precise_sleep(const f64 seconds) {
+
+    struct timespec start, current;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    
+    // Calculate the end time
+    struct timespec end = start;
+    end.tv_sec += (time_t)seconds;
+    end.tv_nsec += (long)((seconds - (time_t)seconds) * 1e9);
+    
+    // Normalize the nanoseconds field
+    if (end.tv_nsec >= 1000000000L) {
+        end.tv_sec += end.tv_nsec / 1000000000L;
+        end.tv_nsec %= 1000000000L;
+    }
+    
+    // First sleep for most of the time using nanosleep
+    struct timespec sleep_time;
+    sleep_time.tv_sec = (time_t)seconds;
+    sleep_time.tv_nsec = (long)((seconds - (time_t)seconds) * 1e9);
+    
+    // Subtract a small buffer to ensure we don't oversleep
+    const long buffer_ns = 1000000L; // 1 ms buffer
+    if (sleep_time.tv_nsec > buffer_ns) {
+        sleep_time.tv_nsec -= buffer_ns;
+    } else if (sleep_time.tv_sec > 0) {
+        sleep_time.tv_sec -= 1;
+        sleep_time.tv_nsec = 1000000000L - (buffer_ns - sleep_time.tv_nsec);
+    } else {
+        sleep_time.tv_sec = 0;
+        sleep_time.tv_nsec = 0;
+    }
+    
+    // Perform the initial sleep
+    if (sleep_time.tv_sec > 0 || sleep_time.tv_nsec > 0) {
+        nanosleep(&sleep_time, NULL);
+    }
+    
+    // Busy-wait for the remaining time
+    do {
+        clock_gettime(CLOCK_MONOTONIC, &current);
+    } while (current.tv_sec < end.tv_sec || (current.tv_sec == end.tv_sec && current.tv_nsec < end.tv_nsec));
+}
 
 
 system_time get_system_time() {
