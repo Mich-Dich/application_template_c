@@ -232,6 +232,7 @@ echo "Binary available at: ${{bin_dir}}/${{project_name}}"
         json.dump(launch_data, f, indent=4)
 
 
+
     recommendations_data = {
         "recommendations": [
             "ms-vscode.cpptools",
@@ -240,11 +241,27 @@ echo "Binary available at: ${{bin_dir}}/${{project_name}}"
             "twxs.cmake",
             "ms-vscode.cmake-tools",
             "emeraldwalk.RunOnSave",
+            "iliazeus.vscode-ansi"
         ]
     }
     launch_json_path = os.path.join(vscode_dir, "extensions.json")
     with open(launch_json_path, "w") as f:
         json.dump(recommendations_data, f, indent=4)
+
+
+
+    file_associations_data = {
+        "files.associations": {
+            "compare": "c",
+            "data_types.h": "c",
+            "stat.h": "c",
+            "logger.h": "c",
+            "*.log": "ansi"
+        }
+    }
+    launch_json_path = os.path.join(vscode_dir, "settings.json")
+    with open(launch_json_path, "w") as f:
+        json.dump(file_associations_data, f, indent=4)
 
 
 
@@ -257,6 +274,7 @@ echo "Binary available at: ${{bin_dir}}/${{project_name}}"
     defines = ["PLATFORM_LINUX"]
     if config_define:
         defines.append(config_define)
+    defines.append("_POSIX_C_SOURCE=200809L")
 
     cpp_props = {
         "version": 4,

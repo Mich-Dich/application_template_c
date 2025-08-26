@@ -35,9 +35,11 @@ inline static const char *short_filename(const char *path) {
     return last ? last + 1 : path;
 }
 
+
 static const char* severity_names[] = {
     "TRACE", "DEBUG", "INFO ", "WARN ", "ERROR", "FATAL"
 };
+
 
 const char* log_level_to_string(log_type t) {
 
@@ -45,6 +47,7 @@ const char* log_level_to_string(log_type t) {
         return "UNK";
     return severity_names[(int)t];
 }
+
 
 static const char* console_color_table[] = {
     "\033[90m",                 // TRACE - gray
@@ -58,7 +61,7 @@ static const char*              console_rest = "\033[0m";
 
 static const char*              default_format = "[$B$T $L] $E $P:$G $C$Z";
 
-static char*                    format_current = NULL;
+static char*                    s_format_current = NULL;
 
 
 // ============================================================================================================================================
@@ -74,6 +77,7 @@ typedef struct thread_label_node {
 static thread_label_node*       s_thread_labels = NULL;
 
 static pthread_mutex_t          s_general_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 void register_thread_label(u64 thread_id, const char* label) {
 
@@ -100,6 +104,7 @@ void register_thread_label(u64 thread_id, const char* label) {
     pthread_mutex_unlock(&s_general_mutex);
 }
 
+
 const char* lookup_thread_label(u64 thread_id) {
 
     struct thread_label_node* n = s_thread_labels;
@@ -112,28 +117,38 @@ const char* lookup_thread_label(u64 thread_id) {
 }
 
 
+// ============================================================================================================================================
+// data
+// ============================================================================================================================================
 
 static b8 s_log_to_console = false;
 
 static char* s_log_file_path = NULL;
 
+static char s_log_msg_buffer[32000] = {0};
 
 
 // ============================================================================================================================================
 // private functions
 // ============================================================================================================================================
 
-bool flush_log_msg_buffer() {
+bool flush_log_msg_buffer(const char* log_msg) {
     
     if (s_log_file_path == NULL)
         return false;
 
-    FILE* fp = fopen(s_log_file_path, "w");
+    FILE* fp = fopen(s_log_file_path, "a");
     if (fp == NULL)
         BREAK_POINT();          // logger failed to create log file
 
-    fprintf(fp, "## test\n");
+    // TODO: dump content of buffer
+    fprintf(fp, "%s", s_log_msg_buffer);
+
+    if (log_msg)                            // log provided message if exist
+        fprintf(fp, "%s", log_msg);
+
     fclose(fp);
+    return true;
 }
 
 
@@ -145,7 +160,7 @@ bool flush_log_msg_buffer() {
 b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode) {
 
     s_log_to_console = log_to_console;
-    // TODO: make sure log file exists [log_dir/main_log_file_name.log]
+    set_format(log_msg_format);
 
     const char* exec_path = get_executable_path();
     if (exec_path == NULL)
@@ -156,26 +171,24 @@ b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* 
     snprintf(file_path, sizeof(file_path), "%s/%s", exec_path, log_dir);
     // printf("log path: %s\n", file_path);
 
-    if (!mkdir(file_path, 0777) && (errno != EEXIST))
-        BREAK_POINT();          // logger failed to create directory for log files
+    if (!mkdir(file_path, 0777))        // create dir
+        if (errno != EEXIST)            // OK if exist
+            BREAK_POINT();
 
     memset(file_path, '\0', sizeof(file_path));
     snprintf(file_path, sizeof(file_path), "%s/%s/%s.log", exec_path, log_dir, log_file_name);
-    s_log_file_path = file_path;
+    s_log_file_path = strdup(file_path);
     // printf("log file path: %s\n", file_path);
 
-    FILE* fp = fopen(s_log_file_path, "w");
-    if (fp == NULL)
-        BREAK_POINT();          // logger failed to create log file
+    system_time st = get_system_time();
+    FILE* fp = fopen(s_log_file_path, (use_append_mode) ? "a" : "w");
+    ASSERT_SS(fp)
 
-    // TODO: write some basic metadata to logfile
-    fprintf(fp, "## test\n");
+    fprintf(fp, "=====================================================================================================\n");
+    fprintf(fp, "Log initalized at [%04d/%02d/%02d %02d:%02d:%02d] with format: %s\n", st.year, st.month, st.day, st.hour, st.minute, st.second, s_format_current);
+    fprintf(fp, "-----------------------------------------------------------------------------------------------------\n");
 
     fclose(fp);
-
-    // TODO: clear old file if exists and [use_append_mode]
-
-    set_format(log_msg_format);
 
     return true;
 }
@@ -183,34 +196,40 @@ b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* 
 
 b8 shutdown_logger() {
 
-    const bool flush_result = flush_log_msg_buffer();
+    system_time st = get_system_time();
+
+    dyn_str out;
+    ds_init(&out);
+
+    ds_append_str(&out, "-----------------------------------------------------------------------------------------------------\n");
+    ds_append_fmt(&out, "Closing Log at [%04d/%02d/%02d %02d:%02d:%02d]\n", st.year, st.month, st.day, st.hour, st.minute, st.second);
+    ds_append_str(&out, "=====================================================================================================\n");
+
+    ASSERT_SS(flush_log_msg_buffer(out.buf))
+
+    ds_free(&out);
 
     return true;
 }
 
 
-//
 void set_format(const char* new_format) {
 
     pthread_mutex_lock(&s_general_mutex);
-    free(format_current);
+    free(s_format_current);
     if (new_format)
-        format_current = strdup(new_format);
+        s_format_current = strdup(new_format);
     else
-        format_current = strdup(default_format);
+        s_format_current = strdup(default_format);
     pthread_mutex_unlock(&s_general_mutex);
 }
-
-/* initialize default format on load */
-__attribute__((constructor))
-static void _init_default_format(void)      { format_current = strdup(default_format); }
 
 
 // ============================================================================================================================================
 // message formatter
 // ============================================================================================================================================
 
-/* ----------------- main formatter - expects the message text to be already formatted ----------------- */
+// ----------------- main formatter - expects the message text to be already formatted -----------------
 void process_log_message_v(log_type type, u64 thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message) {
     
     if (!formatted_message)
@@ -218,9 +237,9 @@ void process_log_message_v(log_type type, u64 thread_id, const char* file_name, 
 
     system_time st = get_system_time();
 
-    // build formatted output according to format_current
+    // build formatted output according to s_format_current
     pthread_mutex_lock(&s_general_mutex);
-    const char* fmt = format_current ? format_current : default_format;
+    const char* fmt = s_format_current ? s_format_current : default_format;
 
     dyn_str out;
     ds_init(&out);
@@ -285,13 +304,18 @@ void process_log_message_v(log_type type, u64 thread_id, const char* file_name, 
     }
 
 
-    // TODO: save [out.buf] in holding buffer and write to file if buffer to full
+    const size_t msg_length = strlen(out.buf);
+    const size_t remaining_buffer_size = sizeof(s_log_msg_buffer) - strlen(s_log_msg_buffer) -1;
+
+    if (remaining_buffer_size > msg_length)
+        strcat(s_log_msg_buffer, out.buf);              // save because ensured size
+    else
+        flush_log_msg_buffer(out.buf);      // flush all buffered messages and current message
 
 
     ds_free(&out);
     pthread_mutex_unlock(&s_general_mutex);
 }
-
 
 //
 void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...) {
@@ -315,9 +339,8 @@ void log_message(log_type type, u64 thread_id, const char* file_name, const char
         va_end(ap);
     }
 
-    // call the formatter that understands format_current
+    // call the formatter that understands s_format_current
     process_log_message_v(type, thread_id, file_name, function_name, line, msg.buf);
 
     ds_free(&msg);
 }
-

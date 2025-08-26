@@ -106,7 +106,7 @@ def main():
             sys.exit(1)
     
         utils.print_u("\nUPDATING SUBMODULES")                  # Update submodules to desired branches
-        # git_util.update_submodule("vendor/glfw", "main")
+        git_util.update_submodule("vendor/glfw", "master")
         # git_util.update_submodule("vendor/glm", "master")
         # git_util.update_submodule("vendor/imgui", "docking")
         # git_util.update_submodule("vendor/implot", "master")

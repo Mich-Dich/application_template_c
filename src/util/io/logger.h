@@ -100,8 +100,12 @@ void register_thread_label(u64 thread_id, const char* label);
 
 #if LOG_LEVEL_ENABLED > 3
     #define LOG_Trace(message, ...)                                     { log_message(LOG_TYPE_TRACE, (u64)pthread_self(), __FILE__, __FUNCTION__, __LINE__, message, ##__VA_ARGS__); }
+    #define LOG_INIT                                                    LOG(Trace, "init")
+    #define LOG_SHUTDOWN                                                LOG(Trace, "shutdown")
 #else
     #define LOG_Trace(message, ...)                                     { }
+    #define LOG_INIT
+    #define LOG_SHUTDOWN
 #endif
 
 #define LOG(severity, message, ...)                                     LOG_##severity(message, ##__VA_ARGS__)
@@ -131,15 +135,18 @@ void register_thread_label(u64 thread_id, const char* label);
     #define ASSERT(expr, success_msg, failure_msg)                      \
         if (expr) { LOG(Trace, success_msg) }                           \
         else {                                                          \
-            LOG(Error, failure_msg)                                     \
+            LOG(Fatal, failure_msg)                                     \
             BREAK_POINT();                                              \
         }
-    #define ASSERT_S(expr, success_msg, failure_msg)                    \
+    #define ASSERT_S(expr)                                              \
         if (!(expr)) {                                                  \
-            LOG(Error, "Assert failed for [%s]", ##expr)                \
+            LOG(Fatal, "Assert failed for [%s]", ##expr)                \
             BREAK_POINT();                                              \
         }
 #else
     #define ASSERT(expr, success_msg, failure_msg)                      if (!(expr)) { BREAK_POINT(); }
-    #define ASSERT_s(expr, success_msg, failure_msg)                    if (!(expr)) { BREAK_POINT(); }
+    #define ASSERT_s(expr)                                              if (!(expr)) { BREAK_POINT(); }
 #endif
+
+// extra short version, does not log anything just test an expression
+#define ASSERT_SS(expr)                                                 if (!(expr)) { BREAK_POINT(); }
