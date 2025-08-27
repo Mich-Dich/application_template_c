@@ -11,10 +11,10 @@
 // @note On Linux, this uses `sigaction` with `SA_SIGINFO` to intercept crash signals.
 // @return Returns `true` if all crash signal handlers were successfully installed,
 //         otherwise returns `false`.
-b8 init_crash_handler();
+b8 crash_handler_init();
 
 
 // @brief Shuts down the crash handler and restores the original signal handlers.
 //        After calling this function, crash signals will no longer be intercepted,
 //        and the default system behavior for those signals is restored.
-void shutdown_crash_handler();
+void crash_handler_shutdown();

@@ -6,15 +6,15 @@
 
 int main(int argc, char *argv[]) {
 
-    ASSERT_SS(init_logger("[$B$T.$J $L$E][$B$Q $I $P:$G$E] $C", true, "logs", "application", false))            // logger should be external to application
-    ASSERT_SS(init_crash_handler())
+    ASSERT_SS(logger_init("[$B$T.$J $L$E][$B$Q $I $P:$G$E] $C", true, "logs", "application", false))            // logger should be external to application
     LOGGER_REGISTER_THREAD_LABEL("main")
+    ASSERT_SS(crash_handler_init())
 
-    VALIDATE(init_application(argc, argv), shutdown_logger(); return 1, "", "Failed to init the application")
-    run_application();
-    shutdown_application();
+    VALIDATE(application_init(argc, argv), logger_shutdown(); return 1, "", "Failed to init the application")
+    application_run();
+    application_shutdown();
 
-    shutdown_crash_handler();
-    shutdown_logger();
+    crash_handler_shutdown();
+    logger_shutdown();
     return 0;
 }

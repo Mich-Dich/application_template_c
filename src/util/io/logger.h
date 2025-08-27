@@ -18,10 +18,10 @@ typedef enum {
 
 
 //
-b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode);
+b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode);
 
 //
-b8 shutdown_logger();
+b8 logger_shutdown();
 
 // 
 void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...);
@@ -53,12 +53,12 @@ void log_message(log_type type, u64 thread_id, const char* file_name, const char
 // @param $E color end               from here the color will be reset
 // @param $C text                    the message the user wants to print
 // @param $Z new line                add a new line in the message format
-void set_format(const char* new_format);
+void logger_set_format(const char* new_format);
 
 //
-void register_thread_label(u64 thread_id, const char* label);
+void logger_register_thread_label(u64 thread_id, const char* label);
 
-#define LOGGER_REGISTER_THREAD_LABEL(label)     register_thread_label((u64)pthread_self(), label);
+#define LOGGER_REGISTER_THREAD_LABEL(label)     logger_register_thread_label((u64)pthread_self(), label);
 
 
 

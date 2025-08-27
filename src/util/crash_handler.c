@@ -184,7 +184,7 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
     
     LOG(Error, "%s", crash_msg.buf);
     ds_free(&crash_msg);
-    shutdown_logger();
+    logger_shutdown();
     
     // Restore default handler and re-raise signal to trigger core dump
     sigaction(sig, &s_old_handlers[sig], NULL);
@@ -192,7 +192,7 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
 }
 
 //
-bool init_crash_handler() {
+bool crash_handler_init() {
 
     LOG_INIT
 
@@ -221,7 +221,7 @@ bool init_crash_handler() {
 }
 
 //
-void shutdown_crash_handler() {
+void crash_handler_shutdown() {
 
     LOG_SHUTDOWN
 

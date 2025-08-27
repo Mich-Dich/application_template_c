@@ -79,7 +79,7 @@ static thread_label_node*       s_thread_labels = NULL;
 static pthread_mutex_t          s_general_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-void register_thread_label(u64 thread_id, const char* label) {
+void logger_register_thread_label(u64 thread_id, const char* label) {
 
     // TODO: only print this to the log file
     // printf("registering thread [%ul] under [%s]\n", thread_id, label);
@@ -157,10 +157,10 @@ bool flush_log_msg_buffer(const char* log_msg) {
 // ============================================================================================================================================
 
 
-b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode) {
+b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode) {
 
     s_log_to_console = log_to_console;
-    set_format(log_msg_format);
+    logger_set_format(log_msg_format);
 
     const char* exec_path = get_executable_path();
     if (exec_path == NULL)
@@ -171,9 +171,8 @@ b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* 
     snprintf(file_path, sizeof(file_path), "%s/%s", exec_path, log_dir);
     // printf("log path: %s\n", file_path);
 
-    if (!mkdir(file_path, 0777))        // create dir
-        if (errno != EEXIST)            // OK if exist
-            BREAK_POINT();
+    if (mkdir(file_path, 0777) && errno != EEXIST)
+        BREAK_POINT();
 
     memset(file_path, '\0', sizeof(file_path));
     snprintf(file_path, sizeof(file_path), "%s/%s/%s.log", exec_path, log_dir, log_file_name);
@@ -194,7 +193,7 @@ b8 init_logger(const char* log_msg_format, const b8 log_to_console, const char* 
 }
 
 
-b8 shutdown_logger() {
+b8 logger_shutdown() {
 
     system_time st = get_system_time();
 
@@ -213,7 +212,7 @@ b8 shutdown_logger() {
 }
 
 
-void set_format(const char* new_format) {
+void logger_set_format(const char* new_format) {
 
     pthread_mutex_lock(&s_general_mutex);
     free(s_format_current);

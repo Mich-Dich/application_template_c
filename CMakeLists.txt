@@ -1,80 +1,127 @@
 cmake_minimum_required(VERSION 3.15)
 
-# Project name and language
-project(application_template_c C)
+# Project name and language - enable both C and CXX
+project(application_template_c LANGUAGES C CXX)
 
 # Use C11 by default
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+# Use C++11 for ImGui
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Enable extra warnings
-add_compile_options(-Wall -Wextra)
-
-# Allow switching between host builds and cross-compilation
-if(DEFINED CROSS_COMPILE AND CROSS_COMPILE)
-    message(STATUS "Cross-compiling using toolchain file")
-    set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/arm-none-eabi-toolchain.cmake")
-endif()
-
-# Detect platform and architecture
-string(TOLOWER "${CMAKE_SYSTEM_NAME}" PLATFORM_NAME)
-string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" ARCH_NAME)
-
-if(ARCH_NAME STREQUAL "" OR ARCH_NAME STREQUAL "unknown")
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-        set(ARCH_NAME "x86_64")
-    else()
-        set(ARCH_NAME "x86")
-    endif()
-endif()
-
-# Use CMAKE_BUILD_TYPE or set default to Debug
+# Set default build type to Release if not specified
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Create a config+platform+arch string
-set(CONFIG_PLATFORM_DIR "${CMAKE_BUILD_TYPE}-${PLATFORM_NAME}-${ARCH_NAME}")
+# Set shared library prefix for MinGW on Windows
+if(WIN32)
+    set(CMAKE_SHARED_LIBRARY_PREFIX "")
+endif()
 
-# Set custom output directories
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/${CONFIG_PLATFORM_DIR}")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/${CONFIG_PLATFORM_DIR}")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/${CONFIG_PLATFORM_DIR}")
+# Set installation prefix to build directory
+set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
 
-# ------------------------------------------------------------------------------
-# Vendor project: GLFW
-# ------------------------------------------------------------------------------
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+# Set IMGUI source files
+set(IMGUI_SOURCES 
+    vendor/cimgui/cimgui.cpp 
+    vendor/cimgui/imgui/imgui.cpp 
+    vendor/cimgui/imgui/imgui_draw.cpp 
+    vendor/cimgui/imgui/imgui_demo.cpp 
+    vendor/cimgui/imgui/imgui_widgets.cpp
+)
 
-add_subdirectory(vendor/glfw)
+# Check if newer ImGui version with tables exists
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/imgui/imgui_tables.cpp)
+    list(APPEND IMGUI_SOURCES vendor/cimgui/imgui/imgui_tables.cpp)
+endif()
 
-# ------------------------------------------------------------------------------
-# Main project sources
-# ------------------------------------------------------------------------------
-include_directories(${CMAKE_SOURCE_DIR}/src)
+# Set IMGUI include directories
+include_directories(
+    vendor/cimgui
+    vendor/cimgui/imgui
+)
 
-file(GLOB_RECURSE SOURCES "src/*.c")
+# Set IMGUI definitions
+add_definitions(
+    -DIMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/cimconfig.h\"
+    -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
+)
 
+# Find OpenGL package
+find_package(OpenGL REQUIRED)
+
+# Add GLFW using FetchContent
+set(GLFW_VERSION 3.4)
+include(FetchContent)
+FetchContent_Declare(
+    glfw
+    URL https://github.com/glfw/glfw/archive/refs/tags/${GLFW_VERSION}.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE  # Fix the timestamp warning
+)
+
+FetchContent_GetProperties(glfw)
+if(NOT glfw_POPULATED)
+    set(FETCHCONTENT_QUIET NO)
+    FetchContent_Populate(glfw)
+    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${glfw_SOURCE_DIR} ${glfw_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
+
+# Add backend implementations
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/imgui/backends)
+    set(BACKENDS_DIR "vendor/cimgui/imgui/backends")
+else()
+    set(BACKENDS_DIR "vendor/cimgui/imgui/examples")
+endif()
+
+list(APPEND IMGUI_SOURCES 
+    ${BACKENDS_DIR}/imgui_impl_opengl3.cpp
+    ${BACKENDS_DIR}/imgui_impl_glfw.cpp
+)
+
+# Create cimgui library
+add_library(cimgui STATIC ${IMGUI_SOURCES})
+
+# For Windows: Remove the outer quotes and ensure proper escaping
+if(WIN32)
+    target_compile_definitions(cimgui PUBLIC -DIMGUI_IMPL_API=extern\ \"C\"\ __declspec(dllexport))
+else()
+    target_compile_definitions(cimgui PUBLIC -DIMGUI_IMPL_API=extern\ \"C\")
+endif()
+
+# Link dependencies
+target_link_libraries(cimgui 
+    OpenGL::GL
+    glfw
+)
+
+file(GLOB_RECURSE SOURCES "src/**.c")
+
+# Add main executable
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# ------------------------------------------------------------------------------
-# Link with GLFW and system libs
-# ------------------------------------------------------------------------------
-target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
+# Set executable-specific definitions
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS
+    -DCIMGUI_USE_OPENGL3
+    -DCIMGUI_USE_GLFW
+)
 
-# On Linux we need extra system libs (GL, X11, pthread, etc.)
-if(UNIX AND NOT APPLE)
-    find_package(OpenGL REQUIRED)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${OPENGL_gl_LIBRARY} m dl pthread)
-endif()
+# Link executable with cimgui and dependencies
+target_link_libraries(${PROJECT_NAME}
+    cimgui
+    OpenGL::GL
+    glfw
+)
 
-# ------------------------------------------------------------------------------
-# Print helpful info
-# ------------------------------------------------------------------------------
-message(STATUS "Configuration: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Platform:      ${PLATFORM_NAME}")
-message(STATUS "Architecture:  ${ARCH_NAME}")
-message(STATUS "Output dir:    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+# Set include directories for executable
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/imgui
+    ${BACKENDS_DIR}
+)

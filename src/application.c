@@ -1,6 +1,8 @@
 
 #include "util/system.h"
 #include "platform/window.h"
+#include "imgui_config/imgui_config.h"
+#include "render/renderer.h"
 
 #include "application.h"
 
@@ -9,14 +11,15 @@ static application_state app_state;
 
 
 // ============================================================================================================================================
-// util
+// FPS control
 // ============================================================================================================================================
 
 static f64 s_desired_loop_duration_s = 10.f;       // in seconds
 static f64 s_loop_start_time = 0.f;
+static f64 s_delta_time = 0.f;
 
 //
-void set_fps_values(const u16 desired_framerate) {
+void application_set_fps_values(const u16 desired_framerate) {
 
     s_desired_loop_duration_s = 1/(f32)desired_framerate;
     s_loop_start_time = get_precise_time();
@@ -27,52 +30,68 @@ void limit_fps() {
 
     const f64 current = get_precise_time();                     // I guess time in milliseconds
     const f64 difference = current - s_loop_start_time;
-    if (difference < s_desired_loop_duration_s)
-        precise_sleep(s_desired_loop_duration_s - difference);
+    s_delta_time = s_desired_loop_duration_s - difference;
+    if (s_delta_time > 0.f)
+        precise_sleep(s_delta_time);
     
     s_loop_start_time = get_precise_time();                     // as this is the last function call before next loop iteration
 }
 
 // ============================================================================================================================================
-// util
+// application
 // ============================================================================================================================================
 
 
-b8 init_application(int argc, char *argv[]) {
+b8 application_init(int argc, char *argv[]) {
 
-    LOG_INIT
-
-    ASSERT(create_window(&app_state.window, 800, 600, "Test Application"), "", "Failed to initialize window")
-
-    // TODO: Initialize renderer
+    ASSERT(create_window(&app_state.window, 800, 600, "application_template_c"), "", "Failed to create window")
+    // ASSERT(renderer_init(&app_state.renderer), "", "Failed to initialize renderer")
+    imgui_init(&app_state.window);
 
     app_state.is_running = true;
+    LOG_INIT
     return true;
 }
 
 
-void shutdown_application() {
+void application_shutdown() {
 
+    imgui_shutdown();
+    // renderer_shutdown(&app_state.renderer);
     destroy_window(&app_state.window);
     
     LOG_SHUTDOWN
 }
 
 
-void run_application() {
+void application_run() {
 
-    // TODO: Call init_dashboard()
+    dashboard_init();
     
-    set_fps_values(30);         // set target FPS to 30
+    application_set_fps_values(30);         // set target FPS to 30
     while (!window_should_close(&app_state.window) && app_state.is_running) {
         window_poll_events();
         
-        // TODO: Update all states
-        // TODO: Render frame
-        window_swap_buffers(&app_state.window);     // TODO: move to renderer
+        dashboard_update(s_delta_time);
         
-        limit_fps();
+        // renderer_begin_frame(&app_state.renderer);
+        imgui_begin_frame();
+        dashboard_draw(s_delta_time);        
+        imgui_end_frame(&app_state.window);
+        // renderer_end_frame(&app_state.window);
+        
+        limit_fps();                        // sets [s_delta_time]
     }
     
-    // TODO: Call shutdown_dashboard()
+    dashboard_shutdown();
 }
+
+
+// ============================================================================================================================================
+// util
+// ============================================================================================================================================
+
+renderer_state* application_get_renderer()          { return &app_state.renderer; }
+
+window_info* application_get_window()               { return &app_state.window; }
+
