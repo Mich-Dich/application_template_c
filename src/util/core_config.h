@@ -11,9 +11,9 @@
 
 #if defined(RENDER_API_OPENGL)
     #if __APPLE__                                   // GL 3.2 Core + GLSL 150
-        static const char *glsl_version = "#version 150";
+        [[maybe_unused]] static const char *glsl_version = "#version 150";
     #else                                           // GL 3.2 + GLSL 130
-        static const char *glsl_version = "#version 130";
+        [[maybe_unused]] static const char *glsl_version = "#version 130";
     #endif
 #endif
 

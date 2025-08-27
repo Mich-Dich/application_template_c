@@ -43,9 +43,12 @@ b8 create_window(window_info* window_data, const u16 width, const u16 height, co
     // float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor()); // Valid on GLFW 3.3+ only
     // to use scale-factor:            glfwCreateWindow((int)(1280 * main_scale), (int)(800 * main_scale), ...);
     window_data->window_ptr = glfwCreateWindow(width, height, title, NULL, NULL);
-
     ASSERT(window_data->window_ptr, "", "Failed to create window")
-    
+    window_data->width = width;
+    window_data->height = height;
+    window_data->title = title;
+    window_data->should_close = false;
+
     glfwMakeContextCurrent(window_data->window_ptr);
     // glfwSetFramebufferSizeCallback(window_data->window_ptr, glfw_framebuffer_size_callback);
     glfwSwapInterval(1);                                        // enable vsync
