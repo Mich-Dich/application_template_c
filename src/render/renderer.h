@@ -1,9 +1,7 @@
 #pragma once
 
-
+#include "util/core_config.h"
 #include "platform/window.h"
-#include "util/io/logger.h"
-
 
 #if defined(RENDER_API_VULKAN)
     typedef struct {

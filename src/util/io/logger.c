@@ -10,11 +10,15 @@
 #include <stdint.h>
 #include <sys/stat.h>
 #include <errno.h> 
+#include <threads.h>
 
 #include "util/data_structure/dynamic_string.h"
 #include "util/system.h"
 
 #include "logger.h"
+
+
+#define USE_MULTI_THREADING     1
 
 
 // ============================================================================================================================================
@@ -36,9 +40,7 @@ inline static const char *short_filename(const char *path) {
 }
 
 
-static const char* severity_names[] = {
-    "TRACE", "DEBUG", "INFO ", "WARN ", "ERROR", "FATAL"
-};
+static const char* severity_names[] =       { "TRACE", "DEBUG", "INFO ", "WARN ", "ERROR", "FATAL" };
 
 
 const char* log_level_to_string(log_type t) {
@@ -57,6 +59,7 @@ static const char* console_color_table[] = {
     "\033[91m",                 // ERROR - red
     "\x1B[1m\x1B[37m\x1B[41m"   // FATAL - bold white on red
 };
+
 static const char*              console_rest = "\033[0m";
 
 static const char*              default_format = "[$B$T $L] $E $P:$G $C$Z";
@@ -118,6 +121,137 @@ const char* lookup_thread_label(u64 thread_id) {
 
 
 // ============================================================================================================================================
+// multi threading
+// ============================================================================================================================================
+
+#define STR_LEN 512                         // maximum string length (used for file/function name)
+#define MSG_LEN 32000                       // maximum log message length (should never be needed, but ...)
+
+#if USE_MULTI_THREADING
+
+    static pthread_t s_logger_thread;           // logger thread
+    
+
+    typedef struct {
+        
+        log_type    type;
+        u64         thread_id;                  // as provided by (u64)pthread_self()
+        char        file_name[STR_LEN];         // as provided by __FILE__
+        char        function_name[STR_LEN];     // as provided by __FUNCTION__
+        int         line;                       // as provided by __LINE__
+        char        message[MSG_LEN];           // already formatted to contain the values of the variable at the time the user called LOG()
+    } log_msg;
+
+    // Circular buffer for log_msg
+    typedef struct {
+
+        log_msg *items;                         // array of items
+        size_t capacity;                        // max number of items
+        size_t head;                            // index of oldest item
+        size_t tail;                            // index to write next item
+        size_t count;                           // current number of items
+        pthread_mutex_t mutex;
+        pthread_cond_t not_full;                // signal producers when space available
+        pthread_cond_t contains;                // signal logger that messages are ready for processing
+        int shutdown;                           // set to 1 to tell threads to quit
+    } log_msg_buffer;
+
+    static log_msg_buffer   s_log_msg_buffer;
+
+    // Initialize buffer
+    int buffer_init(log_msg_buffer* b, size_t capacity) {
+        
+        if (!b || capacity == 0)return EINVAL;
+
+        b->items = calloc(capacity, sizeof(log_msg));
+        if (!b->items) return ENOMEM;
+
+        b->capacity = capacity;
+        b->head = b->tail = b->count = 0;
+        b->shutdown = 0;
+
+        // try to init the pthread vars
+        if (pthread_mutex_init(&b->mutex, NULL) != 0) { 
+            free(b->items);
+            return -1;
+        }
+        
+        if (pthread_cond_init(&b->not_full, NULL) != 0) { 
+            pthread_mutex_destroy(&b->mutex); 
+            free(b->items); 
+            return -1;
+        }
+
+        if (pthread_cond_init(&b->contains, NULL) != 0) { 
+            pthread_cond_destroy(&b->not_full); 
+            pthread_mutex_destroy(&b->mutex); 
+            free(b->items); 
+            return -1;
+        }
+        return 0;
+    }
+
+    // Destroy buffer
+    void buffer_destroy(log_msg_buffer* b) {
+        
+        if (!b) return;
+        pthread_cond_destroy(&b->contains);
+        pthread_cond_destroy(&b->not_full);
+        pthread_mutex_destroy(&b->mutex);
+        free(b->items);
+    }
+
+
+    // Producer pushes an item; blocks if buffer is full. Returns 0 on success, -1 on shutdown.
+    int buffer_push(log_msg_buffer* b, const log_msg* item) {
+
+        int err = 0;
+        pthread_mutex_lock(&b->mutex);
+        while (b->count == b->capacity && !b->shutdown) {
+            pthread_cond_wait(&b->not_full, &b->mutex); // wait until space
+        }
+        if (b->shutdown) {
+            err = -1;
+            goto out;
+        }
+        // copy item into buffer at tail
+        b->items[b->tail] = *item; // struct copy (safe because str is fixed-length array)
+        b->tail = (b->tail + 1) % b->capacity;
+        b->count++;
+
+        pthread_cond_signal(&b->contains);  // notify logger that a new message is present
+    out:
+        pthread_mutex_unlock(&b->mutex);
+        return err;
+    }
+
+    // Consumer pops an item; blocks if buffer is empty. Returns 0 on success, -1 on shutdown.
+    static int buffer_pop(log_msg_buffer* b, log_msg* out) {
+
+        int err = 0;
+        pthread_mutex_lock(&b->mutex);
+        while (b->count == 0 && !b->shutdown)
+            pthread_cond_wait(&b->contains, &b->mutex);     // wait until items available
+        
+        if (b->shutdown && b->count == 0) {
+            err = -1;
+            goto out;
+        }
+        // copy item from buffer at head
+        *out = b->items[b->head]; // struct copy
+        b->head = (b->head + 1) % b->capacity;
+        b->count--;
+        
+        pthread_cond_signal(&b->not_full); // notify producers that space is available
+    out:
+        pthread_mutex_unlock(&b->mutex);
+        return err;
+    }
+
+#endif
+
+
+// ============================================================================================================================================
 // data
 // ============================================================================================================================================
 
@@ -125,7 +259,9 @@ static b8 s_log_to_console = false;
 
 static char* s_log_file_path = NULL;
 
-static char s_log_msg_buffer[32000] = {0};
+#define FILE_BUFFER_SIZE    64000
+
+static char s_file_buffer[FILE_BUFFER_SIZE] = {0};          // buffer fully formatted messages here before writing to file
 
 
 // ============================================================================================================================================
@@ -142,7 +278,7 @@ bool flush_log_msg_buffer(const char* log_msg) {
         BREAK_POINT();          // logger failed to create log file
 
     // TODO: dump content of buffer
-    fprintf(fp, "%s", s_log_msg_buffer);
+    fprintf(fp, "%s", s_file_buffer);
 
     if (log_msg)                            // log provided message if exist
         fprintf(fp, "%s", log_msg);
@@ -150,6 +286,27 @@ bool flush_log_msg_buffer(const char* log_msg) {
     fclose(fp);
     return true;
 }
+
+#if USE_MULTI_THREADING           // give message to buffer and let logger-thread perform processing
+
+    // thread function that waits for messages in the s_lg_msg_buffer and then processes them using the multithread version of [process_log_message_v]
+    static void* logger_thread_func(void* arg) {
+        (void)arg;
+        
+        while (1) {
+            log_msg msg;
+            if (buffer_pop(&s_log_msg_buffer, &msg) == -1) {
+                break; // shutdown requested
+            }
+            
+            // Process the message
+            process_log_message_v(&msg);
+        }
+        
+        return NULL;
+    }
+
+#endif
 
 
 // ============================================================================================================================================
@@ -189,14 +346,33 @@ b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* 
 
     fclose(fp);
 
+#if USE_MULTI_THREADING
+
+    ASSERT_SS(!buffer_init(&s_log_msg_buffer, 32));          // use 32 for now
+    ASSERT_SS(pthread_create(&s_logger_thread, NULL, logger_thread_func, NULL) == 0);
+
+#endif
+
     return true;
 }
 
 
 b8 logger_shutdown() {
 
-    system_time st = get_system_time();
+#if USE_MULTI_THREADING
 
+    pthread_mutex_lock(&s_log_msg_buffer.mutex);
+    s_log_msg_buffer.shutdown = 1;                          // signal logger thread to exit
+    pthread_cond_signal(&s_log_msg_buffer.contains);        // wake up logger thread (flush remaining messages)
+    pthread_mutex_unlock(&s_log_msg_buffer.mutex);
+
+    pthread_join(s_logger_thread, NULL);                    // wait for logger to finish
+
+    buffer_destroy(&s_log_msg_buffer);
+
+#endif
+
+    system_time st = get_system_time();
     dyn_str out;
     ds_init(&out);
 
@@ -228,120 +404,222 @@ void logger_set_format(const char* new_format) {
 // message formatter
 // ============================================================================================================================================
 
-// ----------------- main formatter - expects the message text to be already formatted -----------------
-void process_log_message_v(log_type type, u64 thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message) {
-    
-    if (!formatted_message)
-        formatted_message = "";
+#if USE_MULTI_THREADING           // give message to buffer and let logger-thread perform processing
 
-    system_time st = get_system_time();
+    // process_log_message_v() for multithreading that uses a [log_msg] as param
+    void process_log_message_v(const log_msg* message) {
+        
+        if (strlen(message->message) == 0)      // skip empty messages
+            return;
 
-    // build formatted output according to s_format_current
-    pthread_mutex_lock(&s_general_mutex);
-    const char* fmt = s_format_current ? s_format_current : default_format;
+        system_time st = get_system_time();
 
-    dyn_str out;
-    ds_init(&out);
+        // build formatted output according to s_format_current
+        pthread_mutex_lock(&s_general_mutex);
+        const char* fmt = s_format_current ? s_format_current : default_format;
 
-    size_t fmt_len = strlen(fmt);
-    for (size_t i = 0; i < fmt_len; ++i) {
-        char c = fmt[i];
-        if (c == '$') {
-            if (i + 1 >= fmt_len) break;
-            char cmd = fmt[++i];
-            switch (cmd) {
-                case 'B': ds_append_str(&out, console_color_table[(int)type]); break;                           // color begin
-                case 'E': ds_append_str(&out, console_rest); break;                                             // color end
-                case 'C': ds_append_str(&out, formatted_message); break;                                        // message content
-                case 'L': ds_append_str(&out, log_level_to_string(type)); break;                                // severity
-                case 'Z': ds_append_char(&out, '\n'); break;                                                    // newline
-                case 'Q': {                                                                                     // thread id or label
-                    const char* label = lookup_thread_label(thread_id);
-                    if (label)  ds_append_str(&out, label);
-                    else        ds_append_fmt(&out, "%lu", thread_id);
-                } break;
-                case 'F': ds_append_str(&out, function_name ? function_name : ""); break;                       // function
-                case 'P': ds_append_str(&out, function_name); break;                                            // short function
-                case 'A': ds_append_str(&out, file_name ? file_name : ""); break;                               // file
-                case 'I': ds_append_str(&out, short_filename(file_name ? file_name : "")); break;               // short file
-                case 'G': ds_append_fmt(&out, "%d", line); break;                                               // line
-                
-                case 'T': ds_append_fmt(&out, "%02d:%02d:%02d", st.hour, st.minute, st.second); break;          // time component
-                case 'H': ds_append_fmt(&out, "%02d", st.hour); break;                                          // time component
-                case 'M': ds_append_fmt(&out, "%02d", st.minute); break;                                        // time component
-                case 'S': ds_append_fmt(&out, "%02d", st.second); break;                                        // time component
-                case 'J': ds_append_fmt(&out, "%03d", st.millisec); break;                                      // time component
+        dyn_str out;
+        ds_init(&out);
 
-                case 'N': ds_append_fmt(&out, "%04d/%02d/%02d", st.year, st.month, st.day); break;              // date component
-                case 'Y': ds_append_fmt(&out, "%04d", st.year); break;                                          // date component
-                case 'O': ds_append_fmt(&out, "%02d", st.month); break;                                         // date component
-                case 'D': ds_append_fmt(&out, "%02d", st.day); break;                                           // date component
+        size_t fmt_len = strlen(fmt);
+        for (size_t i = 0; i < fmt_len; ++i) {
+            char c = fmt[i];
+            if (c == '$') {
+                if (i + 1 >= fmt_len) break;
+                char cmd = fmt[++i];
+                switch (cmd) {
+                    case 'B': ds_append_str(&out, console_color_table[(int)message->type]); break;                      // color begin
+                    case 'E': ds_append_str(&out, console_rest); break;                                                 // color end
+                    case 'C': ds_append_str(&out, message->message); break;                                             // message content
+                    case 'L': ds_append_str(&out, log_level_to_string(message->type)); break;                           // severity
+                    case 'Z': ds_append_char(&out, '\n'); break;                                                        // newline
+                    case 'Q': {                                                                                         // thread id or label
+                        const char* label = lookup_thread_label(message->thread_id);
+                        if (label)  ds_append_str(&out, label);
+                        else        ds_append_fmt(&out, "%lu", message->thread_id);
+                    } break;
+                    case 'F': ds_append_str(&out, message->function_name); break;                                       // function
+                    case 'P': ds_append_str(&out, message->function_name); break;                                       // short function
+                    case 'A': ds_append_str(&out, message->file_name); break;                                           // file
+                    case 'I': ds_append_str(&out, short_filename(message->file_name)); break;                           // short file
+                    case 'G': ds_append_fmt(&out, "%d", message->line); break;                                          // line
+                    
+                    case 'T': ds_append_fmt(&out, "%02d:%02d:%02d", st.hour, st.minute, st.second); break;              // time component
+                    case 'H': ds_append_fmt(&out, "%02d", st.hour); break;                                              // time component
+                    case 'M': ds_append_fmt(&out, "%02d", st.minute); break;                                            // time component
+                    case 'S': ds_append_fmt(&out, "%02d", st.second); break;                                            // time component
+                    case 'J': ds_append_fmt(&out, "%03d", st.millisec); break;                                          // time component
 
-                default:                                                                                        // unknown %% - treat literally (append '$' and the char)
-                    ds_append_char(&out, '$');
-                    ds_append_char(&out, cmd);
-                    break;
+                    case 'N': ds_append_fmt(&out, "%04d/%02d/%02d", st.year, st.month, st.day); break;                  // date component
+                    case 'Y': ds_append_fmt(&out, "%04d", st.year); break;                                              // date component
+                    case 'O': ds_append_fmt(&out, "%02d", st.month); break;                                             // date component
+                    case 'D': ds_append_fmt(&out, "%02d", st.day); break;                                               // date component
+
+                    default:                                                                                            // unknown %% - treat literally (append '$' and the char)
+                        ds_append_char(&out, '$');
+                        ds_append_char(&out, cmd);
+                        break;
+                }
+            } else {
+                ds_append_char(&out, c);
             }
-        } else {
-            ds_append_char(&out, c);
         }
+
+        // ensure final message ends with newline
+        if (out.len == 0 || out.buf[out.len - 1] != '\n') ds_append_char(&out, '\n');
+
+
+        // route to stdout or stderr depending on severity
+        if (s_log_to_console) {
+            if ((int)message->type < LOG_TYPE_WARN) {
+                fputs(out.buf, stdout);
+                fflush(stdout);
+            } else {
+                fputs(out.buf, stderr);
+                fflush(stderr);
+            }
+        }
+
+
+        const size_t msg_length = strlen(out.buf);
+        const size_t remaining_buffer_size = sizeof(s_file_buffer) - strlen(s_file_buffer) -1;
+        if (remaining_buffer_size > msg_length)
+            strcat(s_file_buffer, out.buf);              // save because ensured size
+        else
+            flush_log_msg_buffer(out.buf);      // flush all buffered messages and current message
+
+
+        ds_free(&out);
+        pthread_mutex_unlock(&s_general_mutex);
     }
 
-    // ensure final message ends with newline
-    if (out.len == 0 || out.buf[out.len - 1] != '\n') ds_append_char(&out, '\n');
+#else
 
+    // ----------------- main formatter - expects the message text to be already formatted -----------------
+    void process_log_message_v(log_type type, u64 thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message) {
+        
+        if (!formatted_message)
+            formatted_message = "";
 
-    // route to stdout or stderr depending on severity
-    if (s_log_to_console) {
-        if ((int)type < LOG_TYPE_WARN) {
-            fputs(out.buf, stdout);
-            fflush(stdout);
-        } else {
-            fputs(out.buf, stderr);
-            fflush(stderr);
+        system_time st = get_system_time();
+
+        // build formatted output according to s_format_current
+        pthread_mutex_lock(&s_general_mutex);
+        const char* fmt = s_format_current ? s_format_current : default_format;
+
+        dyn_str out;
+        ds_init(&out);
+
+        size_t fmt_len = strlen(fmt);
+        for (size_t i = 0; i < fmt_len; ++i) {
+            char c = fmt[i];
+            if (c == '$') {
+                if (i + 1 >= fmt_len) break;
+                char cmd = fmt[++i];
+                switch (cmd) {
+                    case 'B': ds_append_str(&out, console_color_table[(int)type]); break;                           // color begin
+                    case 'E': ds_append_str(&out, console_rest); break;                                             // color end
+                    case 'C': ds_append_str(&out, formatted_message); break;                                        // message content
+                    case 'L': ds_append_str(&out, log_level_to_string(type)); break;                                // severity
+                    case 'Z': ds_append_char(&out, '\n'); break;                                                    // newline
+                    case 'Q': {                                                                                     // thread id or label
+                        const char* label = lookup_thread_label(thread_id);
+                        if (label)  ds_append_str(&out, label);
+                        else        ds_append_fmt(&out, "%lu", thread_id);
+                    } break;
+                    case 'F': ds_append_str(&out, function_name ? function_name : ""); break;                       // function
+                    case 'P': ds_append_str(&out, function_name); break;                                            // short function
+                    case 'A': ds_append_str(&out, file_name ? file_name : ""); break;                               // file
+                    case 'I': ds_append_str(&out, short_filename(file_name ? file_name : "")); break;               // short file
+                    case 'G': ds_append_fmt(&out, "%d", line); break;                                               // line
+                    
+                    case 'T': ds_append_fmt(&out, "%02d:%02d:%02d", st.hour, st.minute, st.second); break;          // time component
+                    case 'H': ds_append_fmt(&out, "%02d", st.hour); break;                                          // time component
+                    case 'M': ds_append_fmt(&out, "%02d", st.minute); break;                                        // time component
+                    case 'S': ds_append_fmt(&out, "%02d", st.second); break;                                        // time component
+                    case 'J': ds_append_fmt(&out, "%03d", st.millisec); break;                                      // time component
+
+                    case 'N': ds_append_fmt(&out, "%04d/%02d/%02d", st.year, st.month, st.day); break;              // date component
+                    case 'Y': ds_append_fmt(&out, "%04d", st.year); break;                                          // date component
+                    case 'O': ds_append_fmt(&out, "%02d", st.month); break;                                         // date component
+                    case 'D': ds_append_fmt(&out, "%02d", st.day); break;                                           // date component
+
+                    default:                                                                                        // unknown %% - treat literally (append '$' and the char)
+                        ds_append_char(&out, '$');
+                        ds_append_char(&out, cmd);
+                        break;
+                }
+            } else {
+                ds_append_char(&out, c);
+            }
         }
+
+        // ensure final message ends with newline
+        if (out.len == 0 || out.buf[out.len - 1] != '\n') ds_append_char(&out, '\n');
+
+
+        // route to stdout or stderr depending on severity
+        if (s_log_to_console) {
+            if ((int)type < LOG_TYPE_WARN) {
+                fputs(out.buf, stdout);
+                fflush(stdout);
+            } else {
+                fputs(out.buf, stderr);
+                fflush(stderr);
+            }
+        }
+
+
+        const size_t msg_length = strlen(out.buf);
+        const size_t remaining_buffer_size = sizeof(s_file_buffer) - strlen(s_file_buffer) -1;
+        if (remaining_buffer_size > msg_length)
+            strcat(s_file_buffer, out.buf);              // save because ensured size
+        else
+            flush_log_msg_buffer(out.buf);      // flush all buffered messages and current message
+
+
+        ds_free(&out);
+        pthread_mutex_unlock(&s_general_mutex);
     }
 
-
-    const size_t msg_length = strlen(out.buf);
-    const size_t remaining_buffer_size = sizeof(s_log_msg_buffer) - strlen(s_log_msg_buffer) -1;
-
-    if (remaining_buffer_size > msg_length)
-        strcat(s_log_msg_buffer, out.buf);              // save because ensured size
-    else
-        flush_log_msg_buffer(out.buf);      // flush all buffered messages and current message
+#endif
 
 
-    ds_free(&out);
-    pthread_mutex_unlock(&s_general_mutex);
-}
-
-//
 void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...) {
 
-    if (strlen(message) == 0) return;           // skip all empty log messages
+    if (strlen(message) == 0)
+        return;                                             // skip all empty log messages
     
+    // use fixed size stack buffer (this forces a max log message length, but faster than dynamic heap allocation)
+    // need to 
+    char loc_message[MSG_LEN];
+    memset(&loc_message, 0, sizeof(loc_message));
+
     // Format the user message first (variable args)
     va_list ap;
     va_start(ap, message);
-
-    // create a dynamic local buffer for the user's message
-    int needed = vsnprintf(NULL, 0, message, ap);
+    vsnprintf(loc_message, sizeof(loc_message), message, ap);
     va_end(ap);
 
-    dyn_str msg;
-    ds_init(&msg);
-    if (needed > 0) {
-        ds_ensure(&msg, (size_t)needed);
-        va_start(ap, message);
-        vsnprintf(msg.buf, msg.cap, message, ap);
-        msg.len = (size_t)needed;
-        msg.buf[msg.len] = '\0';
-        va_end(ap);
-    }
+#if USE_MULTI_THREADING           // give message to buffer and let logger-thread perform processing
 
+    log_msg current_msg;
+    memset(&current_msg, 0, sizeof(current_msg));       // Initialize to zero
+
+    current_msg.type = type;
+    current_msg.thread_id = thread_id;
+    current_msg.line = line;
+    // Use strncpy to prevent buffer overflows
+    strncpy(current_msg.file_name, file_name, sizeof(current_msg.file_name) - 1);
+    strncpy(current_msg.function_name, function_name, sizeof(current_msg.function_name) - 1);
+    strncpy(current_msg.message, loc_message, sizeof(current_msg.message) - 1);
+
+    buffer_push(&s_log_msg_buffer, &current_msg);
+
+#else           // direct processing in calling thread
     // call the formatter that understands s_format_current
-    process_log_message_v(type, thread_id, file_name, function_name, line, msg.buf);
+    process_log_message_v(type, thread_id, file_name, function_name, line, loc_message);
 
-    ds_free(&msg);
+#endif
+
 }

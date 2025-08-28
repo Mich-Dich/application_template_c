@@ -10,7 +10,7 @@ static bool showAnotherWindow = false;
 //
 b8 dashboard_init() {
 
-
+    return true;
 }
 
 //
@@ -19,14 +19,12 @@ void dashboard_shutdown() {
 }
 
 //
-void dashboard_update(const f32 delta_time) {
+void dashboard_update(__attribute_maybe_unused__ const f32 delta_time) {
 
 }
 
 //
-void dashboard_draw(const f32 delta_time) {
-
-    ImGuiIO *ioptr = igGetIO();
+void dashboard_draw(__attribute_maybe_unused__ const f32 delta_time) {
 
     if (showDemoWindow)
         igShowDemoWindow(&showDemoWindow);

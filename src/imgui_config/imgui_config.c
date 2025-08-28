@@ -52,6 +52,7 @@ b8 imgui_init(window_info* window_data) {
     s_clear_color.y = 0.55f;
     s_clear_color.z = 0.60f;
     s_clear_color.w = 1.00f;
+    return true;
 }
 
 

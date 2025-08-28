@@ -1,8 +1,8 @@
 
+#include "util/io/logger.h"
 #include "util/system.h"
-#include "platform/window.h"
 #include "imgui_config/imgui_config.h"
-#include "render/renderer.h"
+#include "dashboard/dashboard.h"
 
 #include "application.h"
 
@@ -42,7 +42,7 @@ void limit_fps() {
 // ============================================================================================================================================
 
 
-b8 application_init(int argc, char *argv[]) {
+b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unused__ char *argv[]) {
 
     ASSERT(create_window(&app_state.window, 800, 600, "application_template_c"), "", "Failed to create window")
     // ASSERT(renderer_init(&app_state.renderer), "", "Failed to initialize renderer")

@@ -15,6 +15,13 @@ typedef struct {
 void ds_init(dyn_str* s);
 
 
+// @brief Initializes a dynamic string structure with the provided capacity.
+//        Allocates an initial buffer and sets length to zero.
+// @param s Pointer to the dynamic string structure to initialize.
+// @param needed_size capacity needed for string
+void ds_init_s(dyn_str* s, size_t needed_size);
+
+
 // @brief Frees the memory used by a dynamic string and resets its state.
 // @param s Pointer to the dynamic string structure to free.
 void ds_free(dyn_str* s);

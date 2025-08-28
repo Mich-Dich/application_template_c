@@ -150,3 +150,7 @@ void logger_register_thread_label(u64 thread_id, const char* label);
 
 // extra short version, does not log anything just test an expression
 #define ASSERT_SS(expr)                                                 if (!(expr)) { BREAK_POINT(); }
+
+
+// // extra short version, does not log just prints directly to console
+// #define ASSERT_SS(expr, message, ...)                                   if (!(expr)) { fprintf(); BREAK_POINT(); }
