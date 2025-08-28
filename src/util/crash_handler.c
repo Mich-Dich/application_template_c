@@ -182,7 +182,7 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
     ds_append_str(&crash_msg, "------------------------------------------------------\n");
     ds_append_str(&crash_msg, "Note: Install debug symbols for more detailed information\n");
     
-    LOG(Error, "%s", crash_msg.buf);
+    LOG(Error, "%s", crash_msg.data);
     ds_free(&crash_msg);
     logger_shutdown();
     

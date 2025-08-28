@@ -2,56 +2,39 @@
 #include "util/data_structure/data_types.h"
 
 typedef struct {
-    char*   buf;
-    size_t  len;
-    size_t  cap;
+    char*   data;   // Pointer to the dynamically allocated string buffer.
+    size_t  len;    // Current length of the string (excluding null terminator).
+    size_t  cap;    // Allocated capacity of the buffer.
 } dyn_str;
 
 
 
-// @brief Initializes a dynamic string structure with a default capacity.
-//        Allocates an initial buffer and sets length to zero.
-// @param s Pointer to the dynamic string structure to initialize.
+// @brief Initializes a dynamic string to an empty state.
+//        Allocates no memory initially; the string will start with len = 0.
 void ds_init(dyn_str* s);
 
-
-// @brief Initializes a dynamic string structure with the provided capacity.
-//        Allocates an initial buffer and sets length to zero.
-// @param s Pointer to the dynamic string structure to initialize.
-// @param needed_size capacity needed for string
+// @brief Initializes a dynamic string with a preallocated buffer.
+// @param needed_size The minimum initial capacity to allocate.
 void ds_init_s(dyn_str* s, size_t needed_size);
 
-
-// @brief Frees the memory used by a dynamic string and resets its state.
-// @param s Pointer to the dynamic string structure to free.
+// @brief Frees the memory used by the dynamic string.
+//        After this call, the string will be in an uninitialized state.
 void ds_free(dyn_str* s);
 
-
 // @brief Ensures that the dynamic string has enough capacity to hold
-//        the specified additional number of characters. If necessary,
-//        the buffer is reallocated with a larger capacity.
-// @param s Pointer to the dynamic string structure.
-// @param extra The number of additional bytes needed (not including the null terminator).
+//        at least `extra` more characters beyond its current length.
+//        If necessary, reallocates the internal buffer.
 void ds_ensure(dyn_str* s, size_t extra);
 
-
-// @brief Appends a null-terminated string to the dynamic string buffer.
-//        Automatically resizes the buffer if necessary.
-// @param s Pointer to the dynamic string structure.
-// @param text The null-terminated string to append. Ignored if NULL.
+// @brief Appends a C-string to the end of the dynamic string.
+// @param text The null-terminated string to append.
 void ds_append_str(dyn_str* s, const char* text);
 
-
-// @brief Appends a single character to the dynamic string buffer.
-//        Automatically resizes the buffer if necessary.
-// @param s Pointer to the dynamic string structure.
-// @param c The character to append.
+// @brief Appends a single character to the dynamic string.
 void ds_append_char(dyn_str* s, char c);
 
-
-// @brief Appends a formatted string to the dynamic string buffer.
-//        Works like `printf`, automatically resizing the buffer as needed.
-// @param s Pointer to the dynamic string structure.
-// @param fmt The format string (printf-style).
-// @param ... Additional arguments corresponding to the format specifiers.
+// @brief Appends a formatted string to the dynamic string.
+//        Works like printf-style formatting.
+// @param fmt A format string (printf-style).
+// @param ... The arguments to format.
 void ds_append_fmt(dyn_str* s, const char* fmt, ...);

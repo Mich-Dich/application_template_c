@@ -158,6 +158,7 @@ const char* lookup_thread_label(u64 thread_id) {
 
     static log_msg_buffer   s_log_msg_buffer;
 
+
     // Initialize buffer
     int buffer_init(log_msg_buffer* b, size_t capacity) {
         
@@ -200,7 +201,6 @@ const char* lookup_thread_label(u64 thread_id) {
         pthread_mutex_destroy(&b->mutex);
         free(b->items);
     }
-
 
     // Producer pushes an item; blocks if buffer is full. Returns 0 on success, -1 on shutdown.
     int buffer_push(log_msg_buffer* b, const log_msg* item) {
@@ -247,6 +247,13 @@ const char* lookup_thread_label(u64 thread_id) {
         pthread_mutex_unlock(&b->mutex);
         return err;
     }
+
+
+    void process_log_message_v(const log_msg* message);
+
+#else
+
+    void process_log_message_v(log_type type, u64 thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message);
 
 #endif
 
@@ -380,7 +387,7 @@ b8 logger_shutdown() {
     ds_append_fmt(&out, "Closing Log at [%04d/%02d/%02d %02d:%02d:%02d]\n", st.year, st.month, st.day, st.hour, st.minute, st.second);
     ds_append_str(&out, "=====================================================================================================\n");
 
-    ASSERT_SS(flush_log_msg_buffer(out.buf))
+    ASSERT_SS(flush_log_msg_buffer(out.data))
 
     ds_free(&out);
 
@@ -406,7 +413,7 @@ void logger_set_format(const char* new_format) {
 
 #if USE_MULTI_THREADING           // give message to buffer and let logger-thread perform processing
 
-    // process_log_message_v() for multithreading that uses a [log_msg] as param
+    // for multithreading that uses a [log_msg] as param
     void process_log_message_v(const log_msg* message) {
         
         if (strlen(message->message) == 0)      // skip empty messages
@@ -466,27 +473,27 @@ void logger_set_format(const char* new_format) {
         }
 
         // ensure final message ends with newline
-        if (out.len == 0 || out.buf[out.len - 1] != '\n') ds_append_char(&out, '\n');
+        if (out.len == 0 || out.data[out.len - 1] != '\n') ds_append_char(&out, '\n');
 
 
         // route to stdout or stderr depending on severity
         if (s_log_to_console) {
             if ((int)message->type < LOG_TYPE_WARN) {
-                fputs(out.buf, stdout);
+                fputs(out.data, stdout);
                 fflush(stdout);
             } else {
-                fputs(out.buf, stderr);
+                fputs(out.data, stderr);
                 fflush(stderr);
             }
         }
 
 
-        const size_t msg_length = strlen(out.buf);
+        const size_t msg_length = strlen(out.data);
         const size_t remaining_buffer_size = sizeof(s_file_buffer) - strlen(s_file_buffer) -1;
         if (remaining_buffer_size > msg_length)
-            strcat(s_file_buffer, out.buf);              // save because ensured size
+            strcat(s_file_buffer, out.data);              // save because ensured size
         else
-            flush_log_msg_buffer(out.buf);      // flush all buffered messages and current message
+            flush_log_msg_buffer(out.data);      // flush all buffered messages and current message
 
 
         ds_free(&out);
@@ -555,27 +562,27 @@ void logger_set_format(const char* new_format) {
         }
 
         // ensure final message ends with newline
-        if (out.len == 0 || out.buf[out.len - 1] != '\n') ds_append_char(&out, '\n');
+        if (out.len == 0 || out.data[out.len - 1] != '\n') ds_append_char(&out, '\n');
 
 
         // route to stdout or stderr depending on severity
         if (s_log_to_console) {
             if ((int)type < LOG_TYPE_WARN) {
-                fputs(out.buf, stdout);
+                fputs(out.data, stdout);
                 fflush(stdout);
             } else {
-                fputs(out.buf, stderr);
+                fputs(out.data, stderr);
                 fflush(stderr);
             }
         }
 
 
-        const size_t msg_length = strlen(out.buf);
+        const size_t msg_length = strlen(out.data);
         const size_t remaining_buffer_size = sizeof(s_file_buffer) - strlen(s_file_buffer) -1;
         if (remaining_buffer_size > msg_length)
-            strcat(s_file_buffer, out.buf);              // save because ensured size
+            strcat(s_file_buffer, out.data);              // save because ensured size
         else
-            flush_log_msg_buffer(out.buf);      // flush all buffered messages and current message
+            flush_log_msg_buffer(out.data);      // flush all buffered messages and current message
 
 
         ds_free(&out);
@@ -617,8 +624,8 @@ void log_message(log_type type, u64 thread_id, const char* file_name, const char
     buffer_push(&s_log_msg_buffer, &current_msg);
 
 #else           // direct processing in calling thread
-    // call the formatter that understands s_format_current
-    process_log_message_v(type, thread_id, file_name, function_name, line, loc_message);
+
+    process_log_message_v(type, thread_id, file_name, function_name, line, loc_message);        // call the formatter that understands s_format_current
 
 #endif
 

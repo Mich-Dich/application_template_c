@@ -18,17 +18,35 @@
 #define igGetIO igGetIO_Nil
 
 
-//
+// @brief Initializes the ImGui context and sets up platform/renderer bindings.
+//        Configures ImGui for use with OpenGL and GLFW, sets up DPI scaling,
+//        and initializes default style and font settings.
+// @param window GLFW window to attach ImGui to
+// @return True if initialization succeeded, false otherwise
 b8 imgui_init(window_info* window);
 
-//
+
+// @brief Cleans up ImGui resources and shuts down platform/renderer bindings.
+//        Should be called before application termination to properly release
+//        all resources allocated by ImGui.
 void imgui_shutdown();
 
-//
+
+// @brief Starts a new ImGui frame.
+//        Prepares ImGui for receiving new UI commands for the current frame.
+//        Must be called before any ImGui UI rendering commands.
 void imgui_begin_frame();
 
-//
-void imgui_end_frame(window_info* window_date);
 
-//
+// @brief Ends the current ImGui frame and renders the UI.
+//        Finalizes the current UI frame, renders to the active framebuffer,
+//        and handles platform window management (if viewports are enabled).
+// @param window_data GLFW window data for rendering and buffer swap
+void imgui_end_frame(window_info* window_data);
+
+
+// @brief Gets a pointer to the clear color used by the ImGui renderer.
+//        The clear color is used as the background color when rendering
+//        the ImGui viewport. Can be modified to change background color.
+// @return Pointer to the ImVec4 clear color (RGBA format)
 ImVec4* imgui_config_get_clear_color_ptr();

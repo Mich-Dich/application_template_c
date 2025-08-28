@@ -14,32 +14,32 @@
 void ds_init(dyn_str* s) {
     
     s->cap = 4096;
-    s->buf = malloc(s->cap);
+    s->data = malloc(s->cap);
     s->len = 0;
-    if (s->buf) s->buf[0] = '\0';
+    if (s->data) s->data[0] = '\0';
 }
 
 
 void ds_init_s(dyn_str* s, size_t needed_size) {
     
     s->cap = needed_size + 64;      // use provided size + small safety buffer
-    s->buf = malloc(s->cap);
+    s->data = malloc(s->cap);
     s->len = 0;
-    if (s->buf) s->buf[0] = '\0';
+    if (s->data) s->data[0] = '\0';
 }
 
 
 void ds_free(dyn_str* s) {
     
-    free(s->buf);
-    s->buf = NULL;
+    free(s->data);
+    s->data = NULL;
     s->len = s->cap = 0;
 }
 
 
 void ds_ensure(dyn_str* s, size_t extra) {
     
-    if (!s->buf)
+    if (!s->data)
         ds_init(s);
     
     size_t need = s->len + extra + 1;
@@ -47,7 +47,7 @@ void ds_ensure(dyn_str* s, size_t extra) {
         while (s->cap < need)
             s->cap *= 2;
 
-        s->buf = realloc(s->buf, s->cap);
+        s->data = realloc(s->data, s->cap);
     }
 }
 
@@ -59,17 +59,17 @@ void ds_append_str(dyn_str* s, const char* text) {
     
     size_t tlen = strlen(text);
     ds_ensure(s, tlen);
-    memcpy(s->buf + s->len, text, tlen);
+    memcpy(s->data + s->len, text, tlen);
     s->len += tlen;
-    s->buf[s->len] = '\0';
+    s->data[s->len] = '\0';
 }
 
 
 void ds_append_char(dyn_str* s, char c) {
 
     ds_ensure(s, 1);
-    s->buf[s->len++] = c;
-    s->buf[s->len] = '\0';
+    s->data[s->len++] = c;
+    s->data[s->len] = '\0';
 }
 
 
@@ -84,7 +84,7 @@ void ds_append_fmt(dyn_str* s, const char* fmt, ...) {
     va_end(ap2);
     if (needed > 0) {
         ds_ensure(s, (size_t)needed);
-        vsnprintf(s->buf + s->len, s->cap - s->len, fmt, ap);
+        vsnprintf(s->data + s->len, s->cap - s->len, fmt, ap);
         s->len += (size_t)needed;
     }
     va_end(ap);

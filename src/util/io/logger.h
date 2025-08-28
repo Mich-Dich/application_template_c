@@ -7,6 +7,10 @@
 #include "util/data_structure/data_types.h"
 
 
+// @brief Enumeration of available log severity levels.
+//        Levels are ordered by severity, with TRACE being the least severe
+//        and FATAL being the most severe. Used to categorize log messages
+//        and control logging output based on configured log level.
 typedef enum {
     LOG_TYPE_TRACE = 0,
     LOG_TYPE_DEBUG,
@@ -17,14 +21,37 @@ typedef enum {
 } log_type;
 
 
-//
+
+// @brief Initializes the logging system with specified configuration.
+//        Sets up log formatting, output destinations, and creates log file.
+//        For multi-threaded applications, initializes background logging thread.
+// @param log_msg_format Custom format string for log messages (see format tags)
+// @param log_to_console Whether to output logs to console in addition to file
+// @param log_dir Directory where log files will be stored
+// @param log_file_name Base name for log files (without extension)
+// @param use_append_mode True to append to existing log, false to overwrite
+// @return True if initialization succeeded, false otherwise
 b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* log_dir, const char* log_file_name, const b8 use_append_mode);
 
-//
+
+// @brief Gracefully shuts down the logging system.
+//        Flushes any pending log messages, closes log files,
+//        and cleans up resources. For multi-threaded applications,
+//        stops the background logging thread.
+// @return True if shutdown completed successfully
 b8 logger_shutdown();
 
-// 
+
+// @brief Internal function to log a message with specified severity and context.
+//        Not intended for direct use - use the LOG_* macros instead.
+// @param type Severity level of the message
+// @param thread_id ID of the thread generating the message
+// @param file_name Source file where the log call originated
+// @param function_name Function where the log call originated
+// @param line Line number in the source file
+// @param message Format string for the log message (with optional varargs)
 void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...);
+
 
 // The format of log-messages can be customized with the following tags
 // @note to format all following log-messages use: set_format()
@@ -55,7 +82,12 @@ void log_message(log_type type, u64 thread_id, const char* file_name, const char
 // @param $Z new line                add a new line in the message format
 void logger_set_format(const char* new_format);
 
-//
+
+// @brief Associates a human-readable label with a thread ID.
+//        Registered labels will be used in log output instead of numeric thread IDs,
+//        making logs easier to read in multi-threaded applications.
+// @param thread_id The thread ID to label (typically from pthread_self())
+// @param label Descriptive name for the thread
 void logger_register_thread_label(u64 thread_id, const char* label);
 
 #define LOGGER_REGISTER_THREAD_LABEL(label)     logger_register_thread_label((u64)pthread_self(), label);
@@ -112,10 +144,10 @@ void logger_register_thread_label(u64 thread_id, const char* label);
 
 
 #if ENABLE_LOGGING_FOR_VALIDATION
-    #define VALIDATE(expr, return_cmd, success_msg, failure_msg)        \
-        if (expr) { LOG(Trace, success_msg) }                           \
+    #define VALIDATE(expr, return_cmd, success_msg, failure_msg, ...)   \
+        if (expr) { LOG(Trace, success_msg, ##__VA_ARGS__) }            \
         else {                                                          \
-            LOG(Warn, failure_msg)                                      \
+            LOG(Warn, failure_msg, ##__VA_ARGS__)                       \
             return_cmd;                                                 \
         }
 
@@ -125,17 +157,17 @@ void logger_register_thread_label(u64 thread_id, const char* label);
             return_cmd;                                                 \
         }
 #else
-    #define VALIDATE(expr, return_cmd, success_msg, failure_msg)        if (!(expr)) { return_cmd; }
+    #define VALIDATE(expr, return_cmd, success_msg, failure_msg, ...)   if (!(expr)) { return_cmd; }
     #define VALIDATE_s(expr, return_cmd, success_msg, failure_msg)      if (!(expr)) { return_cmd; }
 #endif
 
 
 
 #if ENABLE_LOGGING_FOR_ASSERTS
-    #define ASSERT(expr, success_msg, failure_msg)                      \
-        if (expr) { LOG(Trace, success_msg) }                           \
+    #define ASSERT(expr, success_msg, failure_msg, ...)                 \
+        if (expr) { LOG(Trace, success_msg, ##__VA_ARGS__) }            \
         else {                                                          \
-            LOG(Fatal, failure_msg)                                     \
+            LOG(Fatal, failure_msg, ##__VA_ARGS__)                      \
             BREAK_POINT();                                              \
         }
     #define ASSERT_S(expr)                                              \
@@ -144,7 +176,7 @@ void logger_register_thread_label(u64 thread_id, const char* label);
             BREAK_POINT();                                              \
         }
 #else
-    #define ASSERT(expr, success_msg, failure_msg)                      if (!(expr)) { BREAK_POINT(); }
+    #define ASSERT(expr, success_msg, failure_msg, ...)                 if (!(expr)) { BREAK_POINT(); }
     #define ASSERT_s(expr)                                              if (!(expr)) { BREAK_POINT(); }
 #endif
 
