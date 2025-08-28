@@ -37,3 +37,6 @@ system_time get_system_time();
 // @return Returns a pointer to a static null-terminated string containing the executable's directory.
 //         Returns `NULL` if the path cannot be resolved.
 const char* get_executable_path();
+
+
+int get_executable_path_buf(char *out, size_t outlen);

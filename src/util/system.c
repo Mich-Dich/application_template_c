@@ -85,19 +85,76 @@ system_time get_system_time() {
     return out;
 }
 
-//
-const char* get_executable_path() {
 
-    static char path[PATH_MAX];
+
+#if 1
+
+
+static char executable_path[PATH_MAX] = {0};
+
+const char* get_executable_path() {
+    if (executable_path[0] != '\0') {
+        return executable_path;
+    }
+
+    char path[PATH_MAX];
     ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
     if (len == -1) {
         perror("readlink");
         return NULL;
     }
-    path[len] = '\0'; // add null terminator
+    path[len] = '\0';
 
+    char path_copy[PATH_MAX];
+    strncpy(path_copy, path, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+
+    char* dir = dirname(path_copy);
+    if (dir != NULL) {
+        strncpy(executable_path, dir, sizeof(executable_path) - 1);
+        executable_path[sizeof(executable_path) - 1] = '\0';
+    }
+
+    return executable_path;
+}
+
+
+#else
+
+const char* get_executable_path() {
+
+    char path[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (len == -1) { 
+        perror("readlink");
+        return NULL;
+    }
+    path[len] = '\0'; // add null terminator 
     // dirname may modify the string, so we copy it first
-    static char dir[PATH_MAX];
+    char dir[PATH_MAX];
     strncpy(dir, path, sizeof(dir));
     return dirname(dir);
+}
+
+#endif
+
+
+int get_executable_path_buf(char *out, size_t outlen) {
+
+    char path[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (len == -1)
+        return -1;
+
+    path[len] = '\0';
+    char tmp[PATH_MAX];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp)-1] = '\0';
+    char *d = dirname(tmp);
+    if (!d)
+        return -1;
+        
+    strncpy(out, d, outlen);
+    out[outlen-1] = '\0';
+    return 0;
 }

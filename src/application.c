@@ -1,5 +1,6 @@
 
 #include "util/io/logger.h"
+#include "util/io/serializer_yaml.h"
 #include "util/system.h"
 #include "imgui_config/imgui_config.h"
 #include "dashboard/dashboard.h"
@@ -47,6 +48,29 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
     ASSERT(create_window(&app_state.window, 800, 600, "application_template_c"), "", "Failed to create window")
     // ASSERT(renderer_init(&app_state.renderer), "", "Failed to initialize renderer")
     imgui_init(&app_state.window);
+
+
+    i32 test_i32 = 0;
+    f32 test_float = 0;
+    char test_str[256] = {0};
+    bool test_bool = true;
+    f128 test_long_long = 0;
+    
+    serializer_yaml sy;
+    ASSERT(yaml_serializer_init(&sy, "config/test.yml", "main_section", SERIALIZER_OPTION_LOAD), "", "");
+    yaml_serializer_entry_int(&sy, KEA_VALUE(test_i32));
+    yaml_serializer_entry_float(&sy, KEA_VALUE(test_float));
+    yaml_serializer_entry_bool(&sy, KEA_VALUE(test_bool));
+    yaml_serializer_entry_string(&sy, KEA_VALUE(test_str), sizeof(test_str));
+    yaml_serializer_entry(&sy, KEA_VALUE(test_long_long), "%llu");
+    yaml_serializer_shutdown(&sy);
+
+    LOG(Debug, "test_i32:       [%u]", test_i32)
+    LOG(Debug, "test_float      [%f]", test_float)
+    LOG(Debug, "test_str        [%s]", test_str)
+    LOG(Debug, "test_bool       [%d]", test_bool)
+    LOG(Debug, "test_long_long  [%d]", test_long_long)
+
 
     app_state.is_running = true;
     LOG_INIT

@@ -36,45 +36,17 @@ void yaml_serializer_shutdown(serializer_yaml* sy);
 
 // Entry functions for different types
 // Need value as pointer because value will be overwritten when option = LOAD
-void yaml_serializer_entry_int(serializer_yaml* serializer, const char* key, int* value);
 
+void yaml_serializer_entry_int(serializer_yaml* serializer, const char* key, int* value);
+void yaml_serializer_entry_float(serializer_yaml* serializer, const char* key, float* value);
+void yaml_serializer_entry_bool(serializer_yaml* serializer, const char* key, bool* value);
+void yaml_serializer_entry_string(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size);
+
+// Generic version, user needs to define how he want to save the values
+void yaml_serializer_entry(serializer_yaml* serializer, const char* key, int* value, const char* format);
 
 // --------------------- DISABLED FOR NOW ---------------------
-// void yaml_serializer_entry_float(serializer_yaml* serializer, const char* key, float* value);
-// void yaml_serializer_entry_bool(serializer_yaml* serializer, const char* key, bool* value);
-// void yaml_serializer_entry_string(serializer_yaml* serializer, const char* key, const char* value);
-
 // // Subsection function
 // void yaml_serializer_subsection_begin(serializer_yaml* serializer, const char* name);
 // void yaml_serializer_subsection_end(serializer_yaml* serializer);
 // ------------------------------------------------------------
-
-
-
-
-// // usage example:
-// {
-
-//     #include "util/data_structure/data_types.h"
-//     #include "util/io/logger.h"
-//     #include "util/io/serializer_yaml.h"
-    
-//     f32 test_float = 3.14;
-//     i32 test_i32 = 42;
-//     const char* test_str = "test_str";
-//     const char* test_str_sub = "test_str_sub";
-    
-//     b8 serialize(const serializer_option option) {
-
-//         serializer_yaml sy;
-//         VALIDATE(yaml_serializer_init(&sy, "./config/test.yml", "main_section", SERIALIZER_OPTION_SAVE), return false, "", "");
-//         yaml_serializer_entry_int(&sy, KEA_VALUE(test_i32));
-//         yaml_serializer_entry_float(&sy, KEA_VALUE(test_float));
-//         yaml_serializer_entry_string(&sy, KEA_VALUE(test_str));
-//         yaml_serializer_subsection_begin(&sy, "test_subsection");
-//         yaml_serializer_entry_string(&sy, "test_str_sub", &test_str_sub);
-//         yaml_serializer_subsection_end(&sy);
-//         yaml_serializer_shutdown(&sy);
-//     }
-    
-// }

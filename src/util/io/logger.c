@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <errno.h> 
 #include <threads.h>
+#include <limits.h>
 
 #include "util/data_structure/dynamic_string.h"
 #include "util/system.h"
@@ -327,10 +328,9 @@ b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* 
     logger_set_format(log_msg_format);
 
     const char* exec_path = get_executable_path();
-    if (exec_path == NULL)
-        return false;
+    if (exec_path == NULL) return false;
 
-    char file_path[256];
+    char file_path[PATH_MAX];
     memset(file_path, '\0', sizeof(file_path));
     snprintf(file_path, sizeof(file_path), "%s/%s", exec_path, log_dir);
     // printf("log path: %s\n", file_path);
