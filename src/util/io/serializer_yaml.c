@@ -30,8 +30,6 @@ u32 get_indentation(const char *line) {
     u32 count = 0;
     u32 pointer = 0;
     
-    // Count spaces and tabs at the beginning
-
     while (line[pointer] == ' ' && line[pointer +1] == ' ' || line[count] == '\t') {
 
         pointer += (line[count] == '\t') ? 1 : 2 ;          // shift pointer by 2 if spaces
@@ -43,7 +41,7 @@ u32 get_indentation(const char *line) {
 
 
 //
-const char* remove_indentation(const char* line) {
+const char* skip_indentation(const char* line) {
     
     if (!line) return NULL;
 
@@ -54,6 +52,10 @@ const char* remove_indentation(const char* line) {
     return line + i;  // Return pointer past indentation
 }
 
+
+// ============================================================================================================================================
+// section handling
+// ============================================================================================================================================
 
 // get all lines that match the section and indentation and save them in [serializer->section_content]
 // lines inside [serializer->section_content] are be "\n" terminated
@@ -82,7 +84,7 @@ b8 get_content_of_section(serializer_yaml* serializer) {
     serializer->current_indentation++;      // found section header -> entrys are indented 1 more
 
     // Prepare regex to match key-value lines
-    static const char *pattern = "^[ \t]*[A-Za-z0-9_-]+:[ \t]*.+$";
+    static const char *pattern = "^[ \t]*[A-Za-z0-9_-]+:[ \t]*[^ \t\n]+.*$";
     regex_t regex;
     VALIDATE(!regcomp(&regex, pattern, REG_EXTENDED), return false, "", "Regex compilation failed")
     
@@ -95,33 +97,116 @@ b8 get_content_of_section(serializer_yaml* serializer) {
 
         // check if line looks like this using regex:      <leading indentation><string>: <string>
         if (regexec(&regex, line, 0, NULL, 0) == 0)
-            ds_append_str(&serializer->section_content, remove_indentation(line));
+            ds_append_str(&serializer->section_content, skip_indentation(line));
     }
+    regfree(&regex); // Don't forget to free the regex
 
     LOG(Info, "serializer->section_content: \n%s", serializer->section_content.data)
 
     return true;
 }
 
-
-
+// TODO: implement
+void save_section(serializer_yaml* serializer) { }
 
 // ============================================================================================================================================
 // value parsing
 // ============================================================================================================================================
-
 
 typedef struct {
     char* key;
     char* format;
     void* value;
     b8 found;
-} ds_iterator_callback;
+    dyn_str* section_content;
+} ds_iterator_data;
 
+
+// ================================= set value =================================
+
+
+b8 set_value_callback(const char* line, size_t len, void *user_data) {
+
+    ds_iterator_data* loc_data = (ds_iterator_data*)user_data;
+
+    const size_t key_len = strlen(loc_data->key);
+    if (len <= key_len || memcmp(line, loc_data->key, key_len) != 0 || line[key_len] != ':')        // Check if this line starts with target key followed by a colon
+        return true;
+
+    LOG(Trace, "found [%s] in [%.*s]", loc_data->key, len, line)
+
+    size_t value_len = len - key_len;                                            // Calculate the full length of the line (including potential newline)
+    size_t offset = (line - loc_data->section_content->data) + key_len;         // Calculate the offset of this line in the dynamic string
+    while (offset < loc_data->section_content->len && (loc_data->section_content->data[offset] == ':' || loc_data->section_content->data[offset] == ' ')) {
+
+        offset++;       // Include trailing ":" and space
+        value_len--;
+    }
+    
+    // Handle different types appropriately
+    char value_str[STR_LINE_LEN] = {0};
+    const char* format = loc_data->format;
+
+    // Handle different format types
+    if (strcmp(format, "%d") == 0)          snprintf(value_str, sizeof(value_str), format, *(int*)loc_data->value);
+    else if (strcmp(format, "%u") == 0)     snprintf(value_str, sizeof(value_str), format, *(unsigned int*)loc_data->value);
+    else if (strcmp(format, "%ld") == 0)    snprintf(value_str, sizeof(value_str), format, *(long*)loc_data->value);
+    else if (strcmp(format, "%lu") == 0)    snprintf(value_str, sizeof(value_str), format, *(unsigned long*)loc_data->value);
+    else if (strcmp(format, "%lld") == 0)   snprintf(value_str, sizeof(value_str), format, *(long long*)loc_data->value);
+    else if (strcmp(format, "%llu") == 0)   snprintf(value_str, sizeof(value_str), format, *(unsigned long long*)loc_data->value);
+    else if (strcmp(format, "%f") == 0)     snprintf(value_str, sizeof(value_str), format, *(float*)loc_data->value);
+    else if (strcmp(format, "%lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(double*)loc_data->value);
+    else if (strcmp(format, "%Lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(long double*)loc_data->value);
+    else                                    snprintf(value_str, sizeof(value_str), format, *(handle*)loc_data->value);
+
+
+    // Replace the old value strinf inside the line with the new one
+    ds_remove_range(loc_data->section_content, offset, value_len);
+    ds_insert_str(loc_data->section_content, offset, value_str);
+    
+    // LOG(Trace, "section_content [\n%s]", loc_data->section_content->data)
+    loc_data->found = true;
+    return false;
+}
+
+// tries to find a line containing the key, if found it will update the value, if not it will append a new line at the end
+b8 set_value(serializer_yaml* serializer, const char* key, const char* format, void* value) {
+    
+    if (!serializer || !key || !format || !value) return false;
+
+    ds_iterator_data loc_data;
+    loc_data.key = key;
+    loc_data.format = format;
+    loc_data.value = value;
+    loc_data.found = false;
+    loc_data.section_content = &serializer->section_content;
+
+    LOG(Trace, "serializer->section_content [%s]", serializer->section_content.data)
+
+    ds_iterate_lines(&serializer->section_content, set_value_callback, (void*)&loc_data);
+    
+    if (!loc_data.found) {                      // append new line at end if not found
+        
+        // Key not found - append a new line
+        char new_line[STR_LINE_LEN];
+        snprintf(new_line, sizeof(new_line), "%s: ", key);
+        
+        // Append the formatted value
+        char value_str[STR_LINE_LEN];
+        snprintf(value_str, sizeof(value_str), format, value);
+
+        strcat(new_line, value_str);
+        strcat(new_line, "\n");
+        ds_append_str(&serializer->section_content, new_line);
+    }
+    return loc_data.found;
+}
+
+// ================================= get value =================================
 
 b8 get_value_callback(const char* line, size_t len, void *user_data) {
 
-    ds_iterator_callback* loc_data = (ds_iterator_callback*)user_data;
+    ds_iterator_data* loc_data = (ds_iterator_data*)user_data;
 
     // Check if this line starts with target key followed by a colon
     if (len <= strlen(loc_data->key) || memcmp(line, loc_data->key, strlen(loc_data->key)) != 0 || line[strlen(loc_data->key)] != ':')
@@ -146,82 +231,20 @@ b8 get_value_callback(const char* line, size_t len, void *user_data) {
     return !loc_data->found;
 }
 
-
 // tries to find a line containing the key, if found it will return true and set [char* line] to the line containing the key
-b8 get_value(serializer_yaml* serializer, const char* key, const char* format, void* value) {
+b8 get_value(serializer_yaml* serializer, const char* key, const char* format, handle* value) {
 
     if (!serializer || !key || !format || !value) return false;
 
-    ds_iterator_callback loc_data;
+    ds_iterator_data loc_data;
     loc_data.key = key;
     loc_data.format = format;
     loc_data.value = value;
     loc_data.found = false;
+    loc_data.section_content = NULL;
 
     ds_iterate_lines(&serializer->section_content, get_value_callback, (void*)&loc_data);
     return loc_data.found;
-}
-
-
-// tries to find a line containing the key, if found it will update the value, if not it will append a new line at the end
-b8 set_value(serializer_yaml* serializer, const char* key, const char* format, void* value) {
-    
-    if (!serializer || !key || !format || !value) return false;
-
-    // Get pointers to the start and end of the string data
-    const char* start = serializer->section_content.data;
-    const char* end = start + serializer->section_content.len;
-    char* current = start;
-
-    b8 found = false;
-    while (current < end) {                                             // Iterate through each line
-
-        const char* newline = memchr(current, '\n', end - current);     // Find the next newline character
-        if (newline == NULL) 
-            newline = end;                                              // Last line might not have a newline
-        
-        const size_t line_length = newline - current;                   // Calculate line length
-        
-        // Check if this line starts with our key followed by a colon
-        if (line_length > strlen(key) && memcmp(current, key, strlen(key)) == 0 && current[strlen(key)] == ':') {
-            
-            char new_line[STR_LINE_LEN];
-            snprintf(new_line, sizeof(new_line), "%s: ", key);
-            
-            char value_str[STR_LINE_LEN];
-            snprintf(value_str, sizeof(value_str), format, value);
-            strcat(new_line, value_str);                                // Append the formatted value
-            
-            size_t line_start = current - start;                        // Calculate positions for replacement
-            size_t line_end = newline - start;
-            
-            // Replace the line in the dynamic string
-            ds_remove_range(&serializer->section_content, line_start, line_end - line_start);
-            ds_insert_str(&serializer->section_content, line_start, new_line);
-            
-            found = true;
-            break;
-        }
-        
-        current = newline + 1;          // Move to next line
-    }
-    
-    if (!found) {
-        
-        // Key not found - append a new line
-        char new_line[STR_LINE_LEN];
-        snprintf(new_line, sizeof(new_line), "%s: ", key);
-        
-        // Append the formatted value
-        char value_str[STR_LINE_LEN];
-        snprintf(value_str, sizeof(value_str), format, value);
-
-        strcat(new_line, value_str);
-        strcat(new_line, "\n");
-        ds_append_str(&serializer->section_content, new_line);
-    }
-    
-    return found;
 }
 
 
@@ -251,8 +274,7 @@ b8 yaml_serializer_init(serializer_yaml* serializer, const char* file_path, cons
         fclose(fp);
     }
 
-    const char* mode = (option == SERIALIZER_OPTION_LOAD) ? "r" : "w";
-    serializer->fp = fopen(loc_file_path, mode);
+    serializer->fp = fopen(loc_file_path, "r");         // always open in read mode (saving will be done in shutdown)
     VALIDATE(serializer->fp, return false, "", "Failed to open file [%s]", loc_file_path)
 
     serializer->option = option;
@@ -284,42 +306,6 @@ void yaml_serializer_shutdown(serializer_yaml* serializer) {
 }
 
 
-// // Entry functions for different types
-// // Need value as pointer because value will be overwritten when option = LOAD
-
-
-
-#define PARSE_VALUE(format)                                                                                     \
-    if (serializer->option == SERIALIZER_OPTION_SAVE)   set_value(serializer, key, format, (void*)value);       \
-    else                                                get_value(serializer, key, format, (void*)value);
-
-void yaml_serializer_entry(serializer_yaml* serializer, const char* key, int* value, const char* format)        { PARSE_VALUE(format) }
-
-void yaml_serializer_entry_int(serializer_yaml* serializer, const char* key, int* value)                        { PARSE_VALUE("%d") }
-
-void yaml_serializer_entry_f32(serializer_yaml* serializer, const char* key, f32* value)                        { PARSE_VALUE("%f") }
-
-void yaml_serializer_entry_b32(serializer_yaml* serializer, const char* key, b32* value)                        { PARSE_VALUE("%u") }
-
-void yaml_serializer_entry_str(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size)   {
-
-    if (serializer->option == SERIALIZER_OPTION_SAVE) {
-        set_value(serializer, key, "%s", (void*)value);
-    } else {
-        char temp[STR_LINE_LEN] = {0};
-        if (get_value(serializer, key, "%s", temp)) {
-            strncpy(value, temp, buffer_size);
-            value[buffer_size - 1] = '\0'; // Ensure null termination
-        }
-    }
-}
-
-#undef PARSE_VALUE
-
-
-
-
-// --------------------- DISABLED FOR NOW ---------------------
 // ============================================================================================================================================
 // Subsection function
 // ============================================================================================================================================
@@ -357,4 +343,36 @@ void yaml_serializer_subsection_end(serializer_yaml* serializer) {
     get_content_of_section(serializer);                         // get content of new section
 
 }
-// ------------------------------------------------------------
+
+
+// ============================================================================================================================================
+// serializer entry functions
+// ============================================================================================================================================
+
+#define PARSE_VALUE(format)                                                                                     \
+    if (serializer->option == SERIALIZER_OPTION_SAVE)   set_value(serializer, key, format, (void*)value);       \
+    else                                                get_value(serializer, key, format, (void*)value);
+
+void yaml_serializer_entry(serializer_yaml* serializer, const char* key, void* value, const char* format)     { PARSE_VALUE(format) }
+
+void yaml_serializer_entry_int(serializer_yaml* serializer, const char* key, int* value)                        { PARSE_VALUE("%d") }
+
+void yaml_serializer_entry_f32(serializer_yaml* serializer, const char* key, f32* value)                        { PARSE_VALUE("%f") }
+
+void yaml_serializer_entry_b32(serializer_yaml* serializer, const char* key, b32* value)                        { PARSE_VALUE("%u") }
+
+void yaml_serializer_entry_str(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size)   {
+
+    if (serializer->option == SERIALIZER_OPTION_SAVE) {
+        set_value(serializer, key, "%s", (void*)value);
+    } else {
+        char temp[STR_LINE_LEN] = {0};
+        if (get_value(serializer, key, "%s", temp)) {
+            strncpy(value, temp, buffer_size);
+            value[buffer_size - 1] = '\0'; // Ensure null termination
+        }
+    }
+}
+
+#undef PARSE_VALUE
+

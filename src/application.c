@@ -51,35 +51,43 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
 
 
 
-#define USE_SUB_SECTION 0
+#define USE_SUB_SECTION 1
 
-    i32 test_i32 = 164;
-    b32 test_bool = false;
-    f128 test_long_long = 555;
-    f32 test_f32 = 0;
+    i32 test_i32 = 200;
+    b32 test_bool = true;
+    f128 test_long_long = 5555;
+    f32 test_f32 = 404.5050;
+    f32 test_f32_s = 666.5050;
     // char test_str[256] = {0};
     
     serializer_yaml sy;
-    ASSERT(yaml_serializer_init(&sy, "config/test.yml", "main_section", SERIALIZER_OPTION_LOAD), "", "");
-    yaml_serializer_entry(&sy, KEY_VALUE(test_i32), "%u");
-    yaml_serializer_entry(&sy, KEY_VALUE(test_bool), "%u");
-    yaml_serializer_entry(&sy, KEY_VALUE(test_long_long), "%llu");
+    ASSERT(yaml_serializer_init(&sy, "config/test.yml", "main_section", SERIALIZER_OPTION_SAVE), "", "");
+
+    LOG(Trace, "ptr: [%p]", &test_i32)
+    LOG(Trace, "value: [%u]", test_i32)
+    LOG(Trace, "value: [%u]", &test_i32)
+
+    yaml_serializer_entry(&sy, "test_i32", (void*)&test_i32, "%u");
+    yaml_serializer_entry(&sy, "test_f32", (void*)&test_f32, "%f");
+    yaml_serializer_entry(&sy, "test_bool", (void*)&test_bool, "%u");
+    yaml_serializer_entry(&sy, "test_long_long", (void*)&test_long_long, "%Lf");
 
 #if USE_SUB_SECTION
     yaml_serializer_subsection_begin(&sy, "sub_section");
-    yaml_serializer_entry(&sy, KEY_VALUE(test_f32), "%f");
+    yaml_serializer_entry(&sy, KEY_VALUE(test_f32_s), "%f");
     yaml_serializer_subsection_end(&sy);
 #endif
 
     yaml_serializer_shutdown(&sy);
 
     LOG(Debug, "test_i32:       [%u]", test_i32)
+    LOG(Debug, "test_f32:       [%f]", test_f32)
     LOG(Debug, "test_bool       [%d]", test_bool)
-    LOG(Debug, "test_long_long  [%d]", test_long_long)
+    LOG(Debug, "test_long_long  [%Lf]", test_long_long)
 
 #if USE_SUB_SECTION
     LOG(Debug, "SubSection: sub_section")
-    LOG(Debug, "test_f32:           [%f]", test_f32)
+    LOG(Debug, "test_f32_s:         [%f]", test_f32_s)
 #endif
 
 

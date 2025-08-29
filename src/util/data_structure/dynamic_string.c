@@ -131,3 +131,12 @@ void ds_insert_str(dyn_str* ds, size_t pos, const char* str) {
     memcpy(ds->data + pos, str, str_len);                                       // Copy the new string
     ds->len += str_len;
 }
+
+
+/*
+
+test_i32: 200
+test_bool: 1
+test_long_long: 63451
+
+*/

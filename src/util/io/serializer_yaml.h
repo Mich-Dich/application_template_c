@@ -43,7 +43,7 @@ void yaml_serializer_entry_b32(serializer_yaml* serializer, const char* key, b32
 void yaml_serializer_entry_str(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size);
 
 // Generic version, user needs to define how he want to save the values
-void yaml_serializer_entry(serializer_yaml* serializer, const char* key, int* value, const char* format);
+void yaml_serializer_entry(serializer_yaml* serializer, const char* key, void* value, const char* format);
 
 // Subsection function
 void yaml_serializer_subsection_begin(serializer_yaml* serializer, const char* name);
