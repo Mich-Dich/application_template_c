@@ -91,16 +91,20 @@ void ds_append_fmt(dyn_str* s, const char* fmt, ...) {
 }
 
 
-void ds_iterate_lines(const dyn_str *ds, void (*callback)(const char *line, size_t len, void *user_data), void *user_data) {
+void ds_iterate_lines(const dyn_str* ds, b8 (*callback)(const char* line, size_t len, void* user_data), void* user_data) {
 
-    const char *start = ds->data;
+    char *start = ds->data;
     const char *end = ds->data + ds->len;
     while (start < end) {
 
-        const char *newline = memchr(start, '\n', end - start);
-        const size_t line_len = (newline)? (size_t)(newline - start) : (size_t)(end - start);
-        callback(start, line_len, user_data);                   // Call the callback with the line
-        start = newline ? newline + 1 : end;                    // Move to the next line (skip the newline if present)
+        const char* new_line = memchr(start, '\n', end - start);
+        if (new_line == NULL) new_line = end;
+        const size_t line_len = (size_t)(new_line - start);
+        
+        if (!callback(start, line_len, user_data))
+            break;
+
+        start = new_line + 1;
     }
 }
 

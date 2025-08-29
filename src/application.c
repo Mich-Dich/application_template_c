@@ -50,26 +50,38 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
     imgui_init(&app_state.window);
 
 
-    i32 test_i32 = 0;
-    f32 test_float = 0;
-    char test_str[256] = {0};
-    bool test_bool = true;
-    f128 test_long_long = 0;
+
+#define USE_SUB_SECTION 0
+
+    i32 test_i32 = 164;
+    b32 test_bool = false;
+    f128 test_long_long = 555;
+    f32 test_f32 = 0;
+    // char test_str[256] = {0};
     
     serializer_yaml sy;
     ASSERT(yaml_serializer_init(&sy, "config/test.yml", "main_section", SERIALIZER_OPTION_LOAD), "", "");
-    yaml_serializer_entry_int(&sy, KEA_VALUE(test_i32));
-    yaml_serializer_entry_float(&sy, KEA_VALUE(test_float));
-    yaml_serializer_entry_bool(&sy, KEA_VALUE(test_bool));
-    yaml_serializer_entry_string(&sy, KEA_VALUE(test_str), sizeof(test_str));
-    yaml_serializer_entry(&sy, KEA_VALUE(test_long_long), "%llu");
+    yaml_serializer_entry(&sy, KEY_VALUE(test_i32), "%u");
+    yaml_serializer_entry(&sy, KEY_VALUE(test_bool), "%u");
+    yaml_serializer_entry(&sy, KEY_VALUE(test_long_long), "%llu");
+
+#if USE_SUB_SECTION
+    yaml_serializer_subsection_begin(&sy, "sub_section");
+    yaml_serializer_entry(&sy, KEY_VALUE(test_f32), "%f");
+    yaml_serializer_subsection_end(&sy);
+#endif
+
     yaml_serializer_shutdown(&sy);
 
     LOG(Debug, "test_i32:       [%u]", test_i32)
-    LOG(Debug, "test_float      [%f]", test_float)
-    LOG(Debug, "test_str        [%s]", test_str)
     LOG(Debug, "test_bool       [%d]", test_bool)
     LOG(Debug, "test_long_long  [%d]", test_long_long)
+
+#if USE_SUB_SECTION
+    LOG(Debug, "SubSection: sub_section")
+    LOG(Debug, "test_f32:           [%f]", test_f32)
+#endif
+
 
 
     app_state.is_running = true;
@@ -119,3 +131,42 @@ renderer_state* application_get_renderer()          { return &app_state.renderer
 
 window_info* application_get_window()               { return &app_state.window; }
 
+
+/*
+
+
+[0x555555e2d1d0] [test_i32] in [test_i32: 42
+test_bool: 1
+test_long_long: 63451
+sub_section:
+]
+
+[0x555555e2d1d0] searching for [test_bool] in [test_i32: 42
+test_bool: 1
+test_long_long: 63451
+sub_section:
+]
+
+[0x555555e2d1dd] searching for [test_bool] in [test_bool: 1
+test_long_long: 63451
+sub_section:
+]
+
+[0x555555e2d1d0] searching for [test_long_long] in [test_i32: 42
+test_bool: 1
+test_long_long: 63451
+sub_section:
+]
+
+[0x555555e2d1dd] searching for [test_long_long] in [test_bool: 1
+test_long_long: 63451
+sub_section:
+]
+
+[0x555555e2d1ea] searching for [test_long_long] in [test_long_long: 63451
+sub_section:
+]
+
+
+
+*/

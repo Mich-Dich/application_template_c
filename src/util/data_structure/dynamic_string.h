@@ -49,10 +49,12 @@ void ds_append_fmt(dyn_str* s, const char* fmt, ...);
 // @brief Iterates over lines in a dyn_str.
 // @param ds   Pointer to the dyn_str.
 // @param callback  Function called for each line, receives (line_start, line_length, user_data).
-void ds_iterate_lines(const dyn_str *ds, void (*callback)(const char *line, size_t len, void *user_data), void *user_data);
+//                  Return true to continue iteration, false to stop.
+void ds_iterate_lines(const dyn_str* ds, b8 (*callback)(const char* line, size_t len, void* user_data), void* user_data);
 
 
 void ds_remove_range(dyn_str* ds, size_t pos, size_t len);
 
 
 void ds_insert_str(dyn_str* ds, size_t pos, const char* str);
+ 

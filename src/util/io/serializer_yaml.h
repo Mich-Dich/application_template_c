@@ -27,7 +27,7 @@ typedef struct {
 } serializer_yaml;
 
 
-#define KEA_VALUE(variable)         util_extract_variable_name(#variable), &variable
+#define KEY_VALUE(variable)         util_extract_variable_name(#variable), &variable
 
 
 // Core functions
@@ -38,15 +38,13 @@ void yaml_serializer_shutdown(serializer_yaml* sy);
 // Need value as pointer because value will be overwritten when option = LOAD
 
 void yaml_serializer_entry_int(serializer_yaml* serializer, const char* key, int* value);
-void yaml_serializer_entry_float(serializer_yaml* serializer, const char* key, float* value);
-void yaml_serializer_entry_bool(serializer_yaml* serializer, const char* key, bool* value);
-void yaml_serializer_entry_string(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size);
+void yaml_serializer_entry_f32(serializer_yaml* serializer, const char* key, f32* value);
+void yaml_serializer_entry_b32(serializer_yaml* serializer, const char* key, b32* value);
+void yaml_serializer_entry_str(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size);
 
 // Generic version, user needs to define how he want to save the values
 void yaml_serializer_entry(serializer_yaml* serializer, const char* key, int* value, const char* format);
 
-// --------------------- DISABLED FOR NOW ---------------------
-// // Subsection function
-// void yaml_serializer_subsection_begin(serializer_yaml* serializer, const char* name);
-// void yaml_serializer_subsection_end(serializer_yaml* serializer);
-// ------------------------------------------------------------
+// Subsection function
+void yaml_serializer_subsection_begin(serializer_yaml* serializer, const char* name);
+void yaml_serializer_subsection_end(serializer_yaml* serializer);
