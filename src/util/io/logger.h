@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <pthread.h>
@@ -50,7 +51,7 @@ b8 logger_shutdown();
 // @param function_name Function where the log call originated
 // @param line Line number in the source file
 // @param message Format string for the log message (with optional varargs)
-void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...);
+void log_message(log_type type, pthread_t thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...);
 
 
 // The format of log-messages can be customized with the following tags
@@ -68,9 +69,8 @@ void log_message(log_type type, u64 thread_id, const char* file_name, const char
 // @param $O data month              mm
 // @param $D data day                dd
 //
-// @param $M thread                  Thread_id: 137575225550656 or a label if provided
-// @param $F function name           application::main, math::foo
-// @param $P only function name      main, foo
+// @param $Q thread                  Thread_id: 137575225550656 or a label if provided
+// @param $F function name           main, foo
 // @param $A file name               /home/workspace/test_cpp/src/main.cpp  /home/workspace/test_cpp/src/project.cpp
 // @param $I only file name          main.cpp
 // @param $G line                    1, 42
@@ -88,13 +88,15 @@ void logger_set_format(const char* new_format);
 //        making logs easier to read in multi-threaded applications.
 // @param thread_id The thread ID to label (typically from pthread_self())
 // @param label Descriptive name for the thread
-void logger_register_thread_label(u64 thread_id, const char* label);
+void logger_register_thread_label(pthread_t thread_id, const char* label);
 
 #define LOGGER_REGISTER_THREAD_LABEL(label)     logger_register_thread_label((u64)pthread_self(), label);
 
 
+void logger_remove_thread_label_by_id(pthread_t thread_id);
 
 
+void logger_remove_thread_label_by_label(const char* label);
 
 
 // This enables the different log levels (FATAL + ERROR are always on)
@@ -106,32 +108,30 @@ void logger_register_thread_label(u64 thread_id, const char* label);
 #define LOG_LEVEL_ENABLED           			4
 
 
-
-
-#define LOG_Fatal(message, ...)                                         { log_message(LOG_TYPE_FATAL, (u64)pthread_self(), __FILE__, __FUNCTION__, __LINE__, message, ##__VA_ARGS__); }
-#define LOG_Error(message, ...)                                         { log_message(LOG_TYPE_ERROR, (u64)pthread_self(), __FILE__, __FUNCTION__, __LINE__, message, ##__VA_ARGS__); }
+#define LOG_Fatal(message, ...)                                         { log_message(LOG_TYPE_FATAL, pthread_self(), __FILE__, __func__, __LINE__, message, ##__VA_ARGS__); }
+#define LOG_Error(message, ...)                                         { log_message(LOG_TYPE_ERROR, pthread_self(), __FILE__, __func__, __LINE__, message, ##__VA_ARGS__); }
 
 #if LOG_LEVEL_ENABLED > 0
-    #define LOG_Warn(message, ...)                                      { log_message(LOG_TYPE_WARN, (u64)pthread_self(), __FILE__, __FUNCTION__, __LINE__, message, ##__VA_ARGS__); }
+    #define LOG_Warn(message, ...)                                      { log_message(LOG_TYPE_WARN, pthread_self(), __FILE__, __func__, __LINE__, message, ##__VA_ARGS__); }
 #else
     #define LOG_Warn(message, ...)                                      { }
 #endif
 
 #if LOG_LEVEL_ENABLED > 1
-    #define LOG_Info(message, ...)                                      { log_message(LOG_TYPE_INFO, (u64)pthread_self(), __FILE__, __FUNCTION__, __LINE__, message, ##__VA_ARGS__); }
+    #define LOG_Info(message, ...)                                      { log_message(LOG_TYPE_INFO, pthread_self(), __FILE__, __func__, __LINE__, message, ##__VA_ARGS__); }
 #else
     #define LOG_Info(message, ...)                                      { }
 #endif
 
 #if LOG_LEVEL_ENABLED > 2
-    #define LOG_Debug(message, ...)                                     { log_message(LOG_TYPE_DEBUG, (u64)pthread_self(), __FILE__, __FUNCTION__, __LINE__, message, ##__VA_ARGS__); }
+    #define LOG_Debug(message, ...)                                     { log_message(LOG_TYPE_DEBUG, pthread_self(), __FILE__, __func__, __LINE__, message, ##__VA_ARGS__); }
 #else
     #define LOG_Debug(message, ...)                                     { }
 #endif
 
 
 #if LOG_LEVEL_ENABLED > 3
-    #define LOG_Trace(message, ...)                                     { log_message(LOG_TYPE_TRACE, (u64)pthread_self(), __FILE__, __FUNCTION__, __LINE__, message, ##__VA_ARGS__); }
+    #define LOG_Trace(message, ...)                                     { log_message(LOG_TYPE_TRACE, pthread_self(), __FILE__, __func__, __LINE__, message, ##__VA_ARGS__); }
     #define LOG_INIT                                                    LOG(Trace, "init")
     #define LOG_SHUTDOWN                                                LOG(Trace, "shutdown")
 #else
@@ -141,6 +141,7 @@ void logger_register_thread_label(u64 thread_id, const char* label);
 #endif
 
 #define LOG(severity, message, ...)                                     LOG_##severity(message, ##__VA_ARGS__)
+
 
 
 #if ENABLE_LOGGING_FOR_VALIDATION
@@ -158,7 +159,7 @@ void logger_register_thread_label(u64 thread_id, const char* label);
         }
 #else
     #define VALIDATE(expr, return_cmd, success_msg, failure_msg, ...)   if (!(expr)) { return_cmd; }
-    #define VALIDATE_s(expr, return_cmd, success_msg, failure_msg)      if (!(expr)) { return_cmd; }
+    #define VALIDATE_S(expr, return_cmd, success_msg, failure_msg)      if (!(expr)) { return_cmd; }
 #endif
 
 
@@ -177,12 +178,8 @@ void logger_register_thread_label(u64 thread_id, const char* label);
         }
 #else
     #define ASSERT(expr, success_msg, failure_msg, ...)                 if (!(expr)) { BREAK_POINT(); }
-    #define ASSERT_s(expr)                                              if (!(expr)) { BREAK_POINT(); }
+    #define ASSERT_S(expr)                                              if (!(expr)) { BREAK_POINT(); }
 #endif
 
 // extra short version, does not log anything just test an expression
 #define ASSERT_SS(expr)                                                 if (!(expr)) { BREAK_POINT(); }
-
-
-// // extra short version, does not log just prints directly to console
-// #define ASSERT_SS(expr, message, ...)                                   if (!(expr)) { fprintf(); BREAK_POINT(); }

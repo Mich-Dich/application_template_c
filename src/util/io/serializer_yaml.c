@@ -5,6 +5,7 @@
 #include <limits.h>
 
 #include "util/io/logger.h"
+#include "util/util.h"
 
 #include "util/io/serializer_yaml.h"
 
@@ -14,7 +15,7 @@
 // helper functions
 // ============================================================================================================================================
 
-#define STR_LINE_LEN    256
+#define STR_LINE_LEN    32000               // !!! longest possible length for a line in YAML file !!!
 
 // write indentation
 static void write_indentation(FILE* fp, u32 indentation) {
@@ -30,7 +31,7 @@ u32 get_indentation(const char *line) {
     u32 count = 0;
     u32 pointer = 0;
     
-    while (line[pointer] == ' ' && line[pointer +1] == ' ' || line[count] == '\t') {
+    while ((line[pointer] == ' ' && line[pointer +1] == ' ') || line[count] == '\t') {
 
         pointer += (line[count] == '\t') ? 1 : 2 ;          // shift pointer by 2 if spaces
         count++;
@@ -66,7 +67,7 @@ b8 get_content_of_section(serializer_yaml* serializer) {
     ds_init(&serializer->section_content);
 
     char line[STR_LINE_LEN] = {0};
-    char section_name[64] = {0};
+    char section_name[STR_LINE_LEN] = {0};
     snprintf(section_name, sizeof(section_name), "%s:", serializer->current_section_name);
     b8 found_section = false;
     rewind(serializer->fp);
@@ -106,25 +107,129 @@ b8 get_content_of_section(serializer_yaml* serializer) {
     return true;
 }
 
-// TODO: implement
-void save_section(serializer_yaml* serializer) { }
+
+#if 1
+
+void save_section() {
+
+    /* TODO:
+
+    load entire file content into dyn_str
+    try to find correct header with correct indentation
+
+    // iterate over lines in serializer->section_content and try to find them in the copied file
+    while (<loop over all lines in [serializer->section_content]>) {
+    
+        if (found line in copied file content) {
+        
+            replace value string if needed
+            continue;
+        }
+
+        // line not found in file
+        append line at end of csection
+    }
+
+    */
+
+}
+
+#else
+
+void save_section(serializer_yaml* serializer) {
+    if (!serializer || !serializer->fp) return;
+
+    // Create a temporary file to write the modified content
+    char temp_path[PATH_MAX];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", serializer->file_path);
+    FILE* temp_fp = fopen(temp_path, "w");
+    if (!temp_fp) return;
+
+    rewind(serializer->fp);
+    char line[STR_LINE_LEN];
+    b8 in_target_section = false;
+    b8 section_written = false;
+
+    while (fgets(line, sizeof(line), serializer->fp)) {
+        u32 current_indent = get_indentation(line);
+        const char* content = skip_indentation(line);
+
+        // Check if we're entering our target section
+        if (!in_target_section && current_indent == serializer->current_indentation - 1) {
+            char section_header[STR_LINE_LEN];
+            snprintf(section_header, sizeof(section_header), "%s:", serializer->current_section_name);
+            
+            if (strncmp(content, section_header, strlen(section_header)) == 0) {
+                in_target_section = true;
+                // Write the section header
+                write_indentation(temp_fp, current_indent);
+                fputs(section_header, temp_fp);
+                fputc('\n', temp_fp);
+                
+                // Write the modified section content
+                const char* section_data = serializer->section_content.data;
+                size_t len = serializer->section_content.len;
+                
+                for (size_t i = 0; i < len; ) {
+                    size_t line_end = i;
+                    while (line_end < len && section_data[line_end] != '\n') {
+                        line_end++;
+                    }
+                    
+                    if (line_end > i) {
+                        write_indentation(temp_fp, serializer->current_indentation);
+                        fwrite(section_data + i, 1, line_end - i, temp_fp);
+                        fputc('\n', temp_fp);
+                    }
+                    
+                    i = line_end + 1;
+                }
+                
+                section_written = true;
+                continue; // Skip writing the original line
+            }
+        }
+        
+        // Check if we're leaving the section
+        if (in_target_section && current_indent < serializer->current_indentation) {
+            in_target_section = false;
+        }
+        
+        // Write lines that aren't part of the modified section
+        if (!in_target_section || !section_written) {
+            fputs(line, temp_fp);
+        }
+    }
+
+    fclose(temp_fp);
+    fclose(serializer->fp);
+    
+    // Replace the original file with the temporary file
+    remove(serializer->file_path);
+    rename(temp_path, serializer->file_path);
+    
+    // Reopen the file for further operations
+    serializer->fp = fopen(serializer->file_path, "r+");
+}
+
+#endif
 
 // ============================================================================================================================================
 // value parsing
 // ============================================================================================================================================
 
 typedef struct {
-    char* key;
-    char* format;
-    void* value;
-    b8 found;
-    dyn_str* section_content;
+    const char*     key;
+    const char*     format;
+    void*           value;
+    b8              found;
+    dyn_str*        section_content;
 } ds_iterator_data;
 
 
 // ================================= set value =================================
 
-
+// 
 b8 set_value_callback(const char* line, size_t len, void *user_data) {
 
     ds_iterator_data* loc_data = (ds_iterator_data*)user_data;
@@ -133,7 +238,7 @@ b8 set_value_callback(const char* line, size_t len, void *user_data) {
     if (len <= key_len || memcmp(line, loc_data->key, key_len) != 0 || line[key_len] != ':')        // Check if this line starts with target key followed by a colon
         return true;
 
-    LOG(Trace, "found [%s] in [%.*s]", loc_data->key, len, line)
+    // LOG(Trace, "found [%s] in [%.*s]", loc_data->key, len, line)
 
     size_t value_len = len - key_len;                                            // Calculate the full length of the line (including potential newline)
     size_t offset = (line - loc_data->section_content->data) + key_len;         // Calculate the offset of this line in the dynamic string
@@ -157,8 +262,8 @@ b8 set_value_callback(const char* line, size_t len, void *user_data) {
     else if (strcmp(format, "%f") == 0)     snprintf(value_str, sizeof(value_str), format, *(float*)loc_data->value);
     else if (strcmp(format, "%lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(double*)loc_data->value);
     else if (strcmp(format, "%Lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(long double*)loc_data->value);
+    else if (strcmp(format, "%s") == 0)     snprintf(value_str, sizeof(value_str), format, (char*)loc_data->value);
     else                                    snprintf(value_str, sizeof(value_str), format, *(handle*)loc_data->value);
-
 
     // Replace the old value strinf inside the line with the new one
     ds_remove_range(loc_data->section_content, offset, value_len);
@@ -181,8 +286,7 @@ b8 set_value(serializer_yaml* serializer, const char* key, const char* format, v
     loc_data.found = false;
     loc_data.section_content = &serializer->section_content;
 
-    LOG(Trace, "serializer->section_content [%s]", serializer->section_content.data)
-
+    // LOG(Trace, "serializer->section_content [%s]", serializer->section_content.data)
     ds_iterate_lines(&serializer->section_content, set_value_callback, (void*)&loc_data);
     
     if (!loc_data.found) {                      // append new line at end if not found
@@ -223,7 +327,7 @@ b8 get_value_callback(const char* line, size_t len, void *user_data) {
     size_t value_len = len - (value_start - line);
     if (value_len >= sizeof(value_str))                 // force length to be shorter than buffer
         value_len = sizeof(value_str) - 1;
-    
+
     memcpy(value_str, value_start, value_len);
     value_str[value_len] = '\0';
     
@@ -367,7 +471,7 @@ void yaml_serializer_entry_str(serializer_yaml* serializer, const char* key, cha
         set_value(serializer, key, "%s", (void*)value);
     } else {
         char temp[STR_LINE_LEN] = {0};
-        if (get_value(serializer, key, "%s", temp)) {
+        if (get_value(serializer, key, "%s", &temp)) {
             strncpy(value, temp, buffer_size);
             value[buffer_size - 1] = '\0'; // Ensure null termination
         }

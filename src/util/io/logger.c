@@ -41,18 +41,18 @@ inline static const char *short_filename(const char *path) {
 }
 
 
-static const char* severity_names[] =       { "TRACE", "DEBUG", "INFO ", "WARN ", "ERROR", "FATAL" };
+static const char* c_severity_names[] =       { "TRACE", "DEBUG", "INFO ", "WARN ", "ERROR", "FATAL" };
 
 
 const char* log_level_to_string(log_type t) {
 
-    if ((int)t < 0 || (size_t)t >= sizeof(severity_names) / sizeof(severity_names[0]))
+    if ((int)t < 0 || (size_t)t >= sizeof(c_severity_names) / sizeof(c_severity_names[0]))
         return "UNK";
-    return severity_names[(int)t];
+    return c_severity_names[(int)t];
 }
 
 
-static const char* console_color_table[] = {
+static const char* c_console_color_table[] = {
     "\033[90m",                 // TRACE - gray
     "\033[94m",                 // DEBUG - blue
     "\033[92m",                 // INFO  - green
@@ -61,9 +61,9 @@ static const char* console_color_table[] = {
     "\x1B[1m\x1B[37m\x1B[41m"   // FATAL - bold white on red
 };
 
-static const char*              console_rest = "\033[0m";
+static const char*              c_console_rest = "\033[0m";
 
-static const char*              default_format = "[$B$T $L] $E $P:$G $C$Z";
+static const char*              c_default_format = "[$B$T $L] $E $P:$G $C$Z";
 
 static char*                    s_format_current = NULL;
 
@@ -83,7 +83,7 @@ static thread_label_node*       s_thread_labels = NULL;
 static pthread_mutex_t          s_general_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-void logger_register_thread_label(u64 thread_id, const char* label) {
+void logger_register_thread_label(pthread_t thread_id, const char* label) {
 
     // TODO: only print this to the log file
     // printf("registering thread [%ul] under [%s]\n", thread_id, label);
@@ -109,15 +109,94 @@ void logger_register_thread_label(u64 thread_id, const char* label) {
 }
 
 
-const char* lookup_thread_label(u64 thread_id) {
+const char* lookup_thread_label(pthread_t thread_id) {
 
+    // pthread_mutex_lock(&s_general_mutex);
     struct thread_label_node* n = s_thread_labels;
     while (n) {
-        if (n->thread_id == thread_id)
+        if (n->thread_id == thread_id) {
+
+            pthread_mutex_unlock(&s_general_mutex);
             return n->label;
+        }
         n = n->next;
     }
+    // pthread_mutex_unlock(&s_general_mutex);
     return NULL;
+}
+
+
+void logger_remove_thread_label_by_id(pthread_t thread_id) {
+    
+    pthread_mutex_lock(&s_general_mutex);
+    thread_label_node *current = s_thread_labels;
+    thread_label_node *prev = NULL;
+    
+    while (current) {
+        if (current->thread_id == thread_id) {
+            // Found the node to remove
+            if (prev) {
+                prev->next = current->next;
+            } else {
+                s_thread_labels = current->next;
+            }
+            
+            free(current->label);
+            free(current);
+            break;
+        }
+        
+        prev = current;
+        current = current->next;
+    }
+    
+    pthread_mutex_unlock(&s_general_mutex);
+}
+
+
+void logger_remove_thread_label_by_label(const char* label) {
+    
+    if (!label) return;
+    pthread_mutex_lock(&s_general_mutex);
+    
+    thread_label_node *current = s_thread_labels;
+    thread_label_node *prev = NULL;
+    
+    while (current) {
+        if (strcmp(current->label, label) == 0) {
+            // Found the node to remove
+            if (prev) {
+                prev->next = current->next;
+            } else {
+                s_thread_labels = current->next;
+            }
+            
+            free(current->label);
+            free(current);
+            break;
+        }
+        
+        prev = current;
+        current = current->next;
+    }
+    
+    pthread_mutex_unlock(&s_general_mutex);
+}
+
+
+void logger_remove_all_thread_labels() {
+    
+    pthread_mutex_lock(&s_general_mutex);
+    thread_label_node *current = s_thread_labels;
+    while (current) {
+        thread_label_node *next = current->next;
+        free(current->label);
+        free(current);
+        current = next;
+    }
+    
+    s_thread_labels = NULL;
+    pthread_mutex_unlock(&s_general_mutex);
 }
 
 
@@ -136,7 +215,7 @@ const char* lookup_thread_label(u64 thread_id) {
     typedef struct {
         
         log_type    type;
-        u64         thread_id;                  // as provided by (u64)pthread_self()
+        pthread_t   thread_id;                  // as provided by (u64)pthread_self()
         char        file_name[STR_LEN];         // as provided by __FILE__
         char        function_name[STR_LEN];     // as provided by __FUNCTION__
         int         line;                       // as provided by __LINE__
@@ -254,7 +333,7 @@ const char* lookup_thread_label(u64 thread_id) {
 
 #else
 
-    void process_log_message_v(log_type type, u64 thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message);
+    void process_log_message_v(log_type type, pthread_t thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message);
 
 #endif
 
@@ -263,23 +342,28 @@ const char* lookup_thread_label(u64 thread_id) {
 // data
 // ============================================================================================================================================
 
-static b8 s_log_to_console = false;
+static b8                       s_log_to_console = false;
 
-static char* s_log_file_path = NULL;
+static char*                    s_log_file_path = NULL;
 
-#define FILE_BUFFER_SIZE    64000
+#define FILE_BUFFER_SIZE        64000
 
-static char s_file_buffer[FILE_BUFFER_SIZE] = {0};          // buffer fully formatted messages here before writing to file
+static char                     s_file_buffer[FILE_BUFFER_SIZE] = {0};          // buffer fully formatted messages here before writing to file
+
+static pthread_mutex_t          s_file_buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 // ============================================================================================================================================
 // private functions
 // ============================================================================================================================================
 
+// CAUTION: !!! need to manually manage the mutex [s_file_buffer_mutex] !!!
+// normal one would add the mutex protection in the function, but this function is only used in two location and both have spatial circumstances
 bool flush_log_msg_buffer(const char* log_msg) {
     
     if (s_log_file_path == NULL)
         return false;
+
 
     FILE* fp = fopen(s_log_file_path, "a");
     if (fp == NULL)
@@ -287,6 +371,7 @@ bool flush_log_msg_buffer(const char* log_msg) {
 
     // TODO: dump content of buffer
     fprintf(fp, "%s", s_file_buffer);
+    memset(s_file_buffer, '\0', sizeof(s_file_buffer));
 
     if (log_msg)                            // log provided message if exist
         fprintf(fp, "%s", log_msg);
@@ -341,7 +426,7 @@ b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* 
     memset(file_path, '\0', sizeof(file_path));
     snprintf(file_path, sizeof(file_path), "%s/%s/%s.log", exec_path, log_dir, log_file_name);
     s_log_file_path = strdup(file_path);
-    // printf("log file path: %s\n", file_path);
+    ASSERT_SS(s_log_file_path)
 
     system_time st = get_system_time();
     FILE* fp = fopen(s_log_file_path, (use_append_mode) ? "a" : "w");
@@ -367,17 +452,22 @@ b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* 
 b8 logger_shutdown() {
 
 #if USE_MULTI_THREADING
-
+    /* Signal shutdown to all waiters (consumers & producers) */
     pthread_mutex_lock(&s_log_msg_buffer.mutex);
-    s_log_msg_buffer.shutdown = 1;                          // signal logger thread to exit
-    pthread_cond_signal(&s_log_msg_buffer.contains);        // wake up logger thread (flush remaining messages)
+    s_log_msg_buffer.shutdown = 1;
+    pthread_cond_broadcast(&s_log_msg_buffer.contains);
+    pthread_cond_broadcast(&s_log_msg_buffer.not_full);
     pthread_mutex_unlock(&s_log_msg_buffer.mutex);
 
-    pthread_join(s_logger_thread, NULL);                    // wait for logger to finish
+    /* Don't try to join ourselves (would deadlock). If thread wasn't created, skip. */
+    if (!pthread_equal(pthread_self(), s_logger_thread)) {
+        pthread_join(s_logger_thread, NULL);
+    }
 
     buffer_destroy(&s_log_msg_buffer);
-
+    logger_remove_all_thread_labels();
 #endif
+
 
     system_time st = get_system_time();
     dyn_str out;
@@ -387,9 +477,16 @@ b8 logger_shutdown() {
     ds_append_fmt(&out, "Closing Log at [%04d/%02d/%02d %02d:%02d:%02d]\n", st.year, st.month, st.day, st.hour, st.minute, st.second);
     ds_append_str(&out, "=====================================================================================================\n");
 
+    // mutex management not needed as the only other thread working on the same buffer joint just befor
     ASSERT_SS(flush_log_msg_buffer(out.data))
 
     ds_free(&out);
+
+    // Free allocated resources
+    free(s_log_file_path);
+    free(s_format_current);
+    s_log_file_path = NULL;
+    s_format_current = NULL;
 
     return true;
 }
@@ -402,7 +499,9 @@ void logger_set_format(const char* new_format) {
     if (new_format)
         s_format_current = strdup(new_format);
     else
-        s_format_current = strdup(default_format);
+        s_format_current = strdup(c_default_format);
+        
+    ASSERT(s_format_current, "", "something went wrong when duplicating the string")
     pthread_mutex_unlock(&s_general_mutex);
 }
 
@@ -423,7 +522,7 @@ void logger_set_format(const char* new_format) {
 
         // build formatted output according to s_format_current
         pthread_mutex_lock(&s_general_mutex);
-        const char* fmt = s_format_current ? s_format_current : default_format;
+        const char* fmt = s_format_current ? s_format_current : c_default_format;
 
         dyn_str out;
         ds_init(&out);
@@ -435,8 +534,8 @@ void logger_set_format(const char* new_format) {
                 if (i + 1 >= fmt_len) break;
                 char cmd = fmt[++i];
                 switch (cmd) {
-                    case 'B': ds_append_str(&out, console_color_table[(int)message->type]); break;                      // color begin
-                    case 'E': ds_append_str(&out, console_rest); break;                                                 // color end
+                    case 'B': ds_append_str(&out, c_console_color_table[(int)message->type]); break;                      // color begin
+                    case 'E': ds_append_str(&out, c_console_rest); break;                                                 // color end
                     case 'C': ds_append_str(&out, message->message); break;                                             // message content
                     case 'L': ds_append_str(&out, log_level_to_string(message->type)); break;                           // severity
                     case 'Z': ds_append_char(&out, '\n'); break;                                                        // newline
@@ -446,7 +545,6 @@ void logger_set_format(const char* new_format) {
                         else        ds_append_fmt(&out, "%lu", message->thread_id);
                     } break;
                     case 'F': ds_append_str(&out, message->function_name); break;                                       // function
-                    case 'P': ds_append_str(&out, message->function_name); break;                                       // short function
                     case 'A': ds_append_str(&out, message->file_name); break;                                           // file
                     case 'I': ds_append_str(&out, short_filename(message->file_name)); break;                           // short file
                     case 'G': ds_append_fmt(&out, "%d", message->line); break;                                          // line
@@ -489,11 +587,14 @@ void logger_set_format(const char* new_format) {
 
 
         const size_t msg_length = strlen(out.data);
+        
+        pthread_mutex_lock(&s_file_buffer_mutex);       // use mutex outside here because of strlen()
         const size_t remaining_buffer_size = sizeof(s_file_buffer) - strlen(s_file_buffer) -1;
         if (remaining_buffer_size > msg_length)
             strcat(s_file_buffer, out.data);              // save because ensured size
         else
             flush_log_msg_buffer(out.data);      // flush all buffered messages and current message
+        pthread_mutex_unlock(&s_file_buffer_mutex);
 
 
         ds_free(&out);
@@ -503,7 +604,7 @@ void logger_set_format(const char* new_format) {
 #else
 
     // ----------------- main formatter - expects the message text to be already formatted -----------------
-    void process_log_message_v(log_type type, u64 thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message) {
+    void process_log_message_v(log_type type, pthread_t thread_id, const char* file_name, const char* function_name, int line, const char* formatted_message) {
         
         if (!formatted_message)
             formatted_message = "";
@@ -512,7 +613,7 @@ void logger_set_format(const char* new_format) {
 
         // build formatted output according to s_format_current
         pthread_mutex_lock(&s_general_mutex);
-        const char* fmt = s_format_current ? s_format_current : default_format;
+        const char* fmt = s_format_current ? s_format_current : c_default_format;
 
         dyn_str out;
         ds_init(&out);
@@ -524,8 +625,8 @@ void logger_set_format(const char* new_format) {
                 if (i + 1 >= fmt_len) break;
                 char cmd = fmt[++i];
                 switch (cmd) {
-                    case 'B': ds_append_str(&out, console_color_table[(int)type]); break;                           // color begin
-                    case 'E': ds_append_str(&out, console_rest); break;                                             // color end
+                    case 'B': ds_append_str(&out, c_console_color_table[(int)type]); break;                           // color begin
+                    case 'E': ds_append_str(&out, c_console_rest); break;                                             // color end
                     case 'C': ds_append_str(&out, formatted_message); break;                                        // message content
                     case 'L': ds_append_str(&out, log_level_to_string(type)); break;                                // severity
                     case 'Z': ds_append_char(&out, '\n'); break;                                                    // newline
@@ -592,13 +693,12 @@ void logger_set_format(const char* new_format) {
 #endif
 
 
-void log_message(log_type type, u64 thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...) {
+void log_message(log_type type, pthread_t thread_id, const char* file_name, const char* function_name, const int line, const char* message, ...) {
 
     if (strlen(message) == 0)
         return;                                             // skip all empty log messages
     
-    // use fixed size stack buffer (this forces a max log message length, but faster than dynamic heap allocation)
-    // need to 
+    // use fixed size stack buffer (this forces a max log message length, but much faster than dynamic heap allocation)
     char loc_message[MSG_LEN];
     memset(&loc_message, 0, sizeof(loc_message));
 
@@ -608,10 +708,10 @@ void log_message(log_type type, u64 thread_id, const char* file_name, const char
     vsnprintf(loc_message, sizeof(loc_message), message, ap);
     va_end(ap);
 
-#if USE_MULTI_THREADING           // give message to buffer and let logger-thread perform processing
+#if USE_MULTI_THREADING                                     // give message to buffer and let logger-thread perform processing
 
     log_msg current_msg;
-    memset(&current_msg, 0, sizeof(current_msg));       // Initialize to zero
+    memset(&current_msg, 0, sizeof(current_msg));           // Initialize to zero
 
     current_msg.type = type;
     current_msg.thread_id = thread_id;
@@ -623,7 +723,7 @@ void log_message(log_type type, u64 thread_id, const char* file_name, const char
 
     buffer_push(&s_log_msg_buffer, &current_msg);
 
-#else           // direct processing in calling thread
+#else                                                       // direct processing in calling thread
 
     process_log_message_v(type, thread_id, file_name, function_name, line, loc_message);        // call the formatter that understands s_format_current
 
