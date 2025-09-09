@@ -11,16 +11,26 @@
 #include <dlfcn.h>
 
 #include "util/data_structure/dynamic_string.h"
+#include "util/data_structure/unordered_map.h"
 #include "util/io/logger.h"
 #include "util/system.h"
+
+#include "crash_handler.h"
+
 
 
 // Maximum number of stack frames to capture
 #define MAX_STACK_FRAMES 40
 
 // Original signal handlers for restoration
-static struct sigaction s_old_handlers[NSIG];
-static const int s_crash_signals[] = {SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS};
+static struct sigaction     s_old_handlers[NSIG];
+
+static const int            s_crash_signals[] = {SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS};
+
+static unordered_map*       s_user_crash_callbacks = NULL;
+
+static u32                  s_next_handle = NULL; // Start handles from 1 (0 is invalid)
+
 
 #ifdef __cplusplus
     #include <cxxabi.h>
@@ -88,14 +98,47 @@ static void resolve_address(void* addr, const char* executable, char** file, int
     pclose(fp);
 }
 
+// execute callbacks with highest key first. (as handle is iterated this will ensure reverse execution os subscribing order)
+static void execute_user_callbacks() {
+
+    if (!s_user_crash_callbacks || s_user_crash_callbacks->size == 0) return;
+    
+    while (s_user_crash_callbacks->size > 0) {
+
+        u32 max_handle = NULL;
+        crash_callback_t callback_to_execute = NULL;
+
+        for (size_t i = 0; i < s_user_crash_callbacks->cap; i++) {      // Find the callback with the highest handle
+            node* current = s_user_crash_callbacks->buckets[i];
+            while (current != NULL) {
+                u32 current_handle = *(u32*)current->key;
+                if (current_handle > max_handle) {
+                    max_handle = current_handle;
+                    callback_to_execute = (crash_callback_t)current->value;
+                }
+                current = current->next;
+            }
+        }
+        
+        if (callback_to_execute) {                                      // Execute the callback and remove it from the map
+            u_map_erase(s_user_crash_callbacks, &max_handle);
+            callback_to_execute();
+        }
+    }
+}
+
+
 //
 static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
+    
     // Prevent recursive crashes in handler
     static volatile sig_atomic_t in_handler = 0;
     if (in_handler) {
         _exit(EXIT_FAILURE);
     }
     in_handler = 1;
+
+    execute_user_callbacks();
     
     // Get program counter
     ucontext_t* uc = (ucontext_t*)ucontext;
@@ -184,7 +227,6 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
     
     LOG(Error, "%s", crash_msg.data);
     ds_free(&crash_msg);
-    logger_shutdown();
     
     // Restore default handler and re-raise signal to trigger core dump
     sigaction(sig, &s_old_handlers[sig], NULL);
@@ -217,6 +259,9 @@ bool crash_handler_init() {
     
     signal(SIGPIPE, SIG_IGN);           // Ignore SIGPIPE to prevent crashes from broken pipes
     
+    s_user_crash_callbacks = u_map_create(2, u32_hash, u32_compare);
+    s_next_handle = 1;                  // Start handles from 1 (0 is invalid)
+
     return true;
 }
 
@@ -228,5 +273,41 @@ void crash_handler_shutdown() {
     const int num_signals = sizeof(s_crash_signals) / sizeof(s_crash_signals[0]);
     for (int i = 0; i < num_signals; i++)                                           // Restore original signal handlers
         sigaction(s_crash_signals[i], &s_old_handlers[s_crash_signals[i]], NULL);
+
+    
+    if (s_user_crash_callbacks) {
+        u_map_destroy(s_user_crash_callbacks);
+        s_user_crash_callbacks = NULL;
+    }
+}
+
+
+u32 crash_handler_subscribe_callback(crash_callback_t user_callback) {
+
+    if (!s_user_crash_callbacks || !s_next_handle || !user_callback) return 0;
+
+    const u32 handle = s_next_handle++;
+
+    // Allocate memory for the key (u32)
+    u32* key = malloc(sizeof(u32));
+    if (!key) return 0;
+    *key = handle;
+    
+    // Insert into map
+    if (u_map_insert(s_user_crash_callbacks, key, (void*)user_callback) != AT_SUCCESS) {
+        free(key);
+        return 0;
+    }
+    
+    return handle;
+}
+
+
+// Unsubscribe a crash callback
+void crash_handler_unsubscribe_callback(u32 handle) {
+    
+    if (!s_user_crash_callbacks || !s_next_handle || handle == 0) return;
+    
+    u_map_erase(s_user_crash_callbacks, &handle);
 
 }

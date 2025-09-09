@@ -1,4 +1,3 @@
-#pragma once
 
 #include <string.h>
 #include <regex.h>
@@ -6,6 +5,7 @@
 
 #include "util/io/logger.h"
 #include "util/util.h"
+#include "util/system.h"
 
 #include "util/io/serializer_yaml.h"
 
@@ -367,7 +367,11 @@ b8 yaml_serializer_init(serializer_yaml* serializer, const char* file_path, cons
 
     char loc_file_path[PATH_MAX];
     memset(loc_file_path, '\0', sizeof(loc_file_path));
-    snprintf(loc_file_path, sizeof(loc_file_path), "%s/%s", exec_path, file_path);
+    const int written = snprintf(loc_file_path, sizeof(loc_file_path), "%s/%s", exec_path, file_path);
+    if (written < 0 || (size_t)written >= sizeof(loc_file_path)) {
+        fprintf(stderr, "Path too long: %s/%s\n", exec_path, file_path);
+        return false; // or handle error properly
+    }
 
     // if LOAD make sure file exists
     if (option == SERIALIZER_OPTION_LOAD) {
@@ -471,7 +475,7 @@ void yaml_serializer_entry_str(serializer_yaml* serializer, const char* key, cha
         set_value(serializer, key, "%s", (void*)value);
     } else {
         char temp[STR_LINE_LEN] = {0};
-        if (get_value(serializer, key, "%s", &temp)) {
+        if (get_value(serializer, key, "%s", (handle*)&temp)) {
             strncpy(value, temp, buffer_size);
             value[buffer_size - 1] = '\0'; // Ensure null termination
         }

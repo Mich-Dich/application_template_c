@@ -1,30 +1,32 @@
 #pragma once
 
 #include <stdbool.h>
+#include <errno.h>
 
-// =============================================
-// @brief Primitive type definitions for consistent sizing across platforms
-// =============================================
+#include <inttypes.h>
 
-typedef unsigned char  u8;    						// 8-bit unsigned integer
-typedef unsigned short u16;   						// 16-bit unsigned integer
-typedef unsigned int u32;   						// 32-bit unsigned integer
-typedef unsigned long long u64;                     // 64-bit unsigned integer
 
-typedef signed char  i8;   							// 8-bit signed integer
-typedef signed short i16;  							// 16-bit signed integer
-typedef signed int i32;  							// 32-bit signed integer
-typedef signed long long i64;  						// 64-bit signed integer
+// Primitive type definitions for consistent sizing across platforms
 
-typedef float f32;          						// 32-bit floating point
-typedef double f64;         						// 64-bit floating point
-typedef long double f128;   						// 128-bit floating point (platform dependent)
+typedef uint8_t     u8;    					// 8-bit unsigned integer
+typedef uint16_t    u16;   					// 16-bit unsigned integer
+typedef uint32_t    u32;   					// 32-bit unsigned integer
+typedef uint64_t    u64;            // 64-bit unsigned integer
 
-typedef bool     b8;
-// typedef char b8;                                    // 8-bit bool
-typedef int b32;                                    // 32-bit bool (often used as flag)
+typedef int8_t      i8;   					// 8-bit signed integer
+typedef int16_t     i16;  					// 16-bit signed integer
+typedef int32_t     i32;  					// 32-bit signed integer
+typedef int64_t     i64;  					// 64-bit signed integer
 
-typedef u64 handle;  				                // Generic handle type for OS resources
+typedef float       f32;			      // 32-bit floating point
+typedef double      f64;			      // 64-bit floating point
+typedef long double f128;   				// 128-bit floating point (platform dependent)
+
+typedef bool        b8;
+typedef int         b32;            // 32-bit bool (often used as flag)
+
+typedef u64 handle;  				        // Generic handle type for OS resources
+
 
 
 // portable static assert for C11 and fallback 
@@ -38,21 +40,12 @@ typedef u64 handle;  				                // Generic handle type for OS resources
   #define STATIC_ASSERT(cond, msg) typedef char STATIC_ASSERT_LINE(static_assertion_, __LINE__)[(cond) ? 1 : -1]
 #endif
 
-STATIC_ASSERT(sizeof(u8) == 1,  "Expected [u8] to be 1 byte");
-STATIC_ASSERT(sizeof(u16) == 2, "Expected [u16] to be 2 byte");
-STATIC_ASSERT(sizeof(u32) == 4, "Expected [u32] to be 4 byte");
-STATIC_ASSERT(sizeof(u64) == 8, "Expected [u64] to be 8 byte");
+STATIC_ASSERT(sizeof(f32) == 4,   "Expected [f32] to be 4 byte");
+STATIC_ASSERT(sizeof(f64) == 8,   "Expected [f64] to be 8 byte");
+STATIC_ASSERT(sizeof(f128) == 16, "Expected [f128] to be 16 byte");
 
-STATIC_ASSERT(sizeof(i8) == 1,  "Expected [i8] to be 1 byte");
-STATIC_ASSERT(sizeof(i16) == 2, "Expected [i16] to be 2 byte");
-STATIC_ASSERT(sizeof(i32) == 4, "Expected [i32] to be 4 byte");
-STATIC_ASSERT(sizeof(i64) == 8, "Expected [i64] to be 8 byte");
-
-STATIC_ASSERT(sizeof(f32) == 4, "Expected [f32] to be 4 byte");
-STATIC_ASSERT(sizeof(f64) == 8, "Expected [f64] to be 8 byte");
-
-STATIC_ASSERT(sizeof(b8) == 1,  "Expected [b8] to be 1 byte");
-STATIC_ASSERT(sizeof(b32) == 4, "Expected [b32] to be 4 byte");
+STATIC_ASSERT(sizeof(b8) == 1,    "Expected [b8] to be 1 byte");
+STATIC_ASSERT(sizeof(b32) == 4,   "Expected [b32] to be 4 byte");
 
 
 // Extension for asset files
@@ -71,3 +64,22 @@ STATIC_ASSERT(sizeof(b32) == 4, "Expected [b32] to be 4 byte");
 #define CONTENT_DIR             	"content"       // Directory for content files
 #define SOURCE_DIR              	"src"           // Directory for source code
 // #define ASSET_DIR                   util_get_executable_path() / "assets"
+
+
+
+
+
+// Macros for easier error handling
+
+// Success code
+#define AT_SUCCESS              0
+
+// Error codes (using standard errno values where appropriate)
+#define AT_ERROR                -1      // Generic error
+#define AT_INVALID_ARGUMENT     EINVAL  // Invalid parameter passed
+#define AT_MEMORY_ERROR         ENOMEM  // Memory allocation failed
+#define AT_RANGE_ERROR          ERANGE  // Position/length out of valid range
+#define AT_FORMAT_ERROR         EILSEQ  // Invalid format string
+#define AT_NOT_INITIALIZED      EPERM   // Data not properly initialized
+#define AT_ALREADY_INITIALIZED  EEXIST  // Data already initialized
+#define AT_IO_ERROR             EIO     // Input/output error (for future file operations)

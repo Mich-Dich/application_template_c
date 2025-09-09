@@ -111,7 +111,6 @@ void logger_register_thread_label(pthread_t thread_id, const char* label) {
 
 const char* lookup_thread_label(pthread_t thread_id) {
 
-    // pthread_mutex_lock(&s_general_mutex);
     struct thread_label_node* n = s_thread_labels;
     while (n) {
         if (n->thread_id == thread_id) {
@@ -121,7 +120,6 @@ const char* lookup_thread_label(pthread_t thread_id) {
         }
         n = n->next;
     }
-    // pthread_mutex_unlock(&s_general_mutex);
     return NULL;
 }
 
@@ -379,6 +377,7 @@ bool flush_log_msg_buffer(const char* log_msg) {
     fclose(fp);
     return true;
 }
+
 
 #if USE_MULTI_THREADING           // give message to buffer and let logger-thread perform processing
 

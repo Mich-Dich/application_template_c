@@ -7,123 +7,116 @@
 #include "dynamic_string.h"
 
 
-// Tutorial: As the data in an uninitialized variable is often zero or garbage, 
-//           we need a way to test if the struct is initalized correctly.
-//           For that we use a magic number, the chances that the garbage value in an uninitialized variable
-//           is exactly the magic number is astronomically low.
-//           But we are the combining that with even more test.
 #define MAGIC 0xDEADBEEF  // Unique identifier for initialized strings
 
-// Tutorial: we define a small macro to validate the string pointer
-//           mention:   can only be used in function that return an int error code
-#define VALIDATE_DYN_STR(s)                                                 \
+#define VALIDATE(s)                                                 \
     do {                                                                    \
-        if (!(s)) return DS_INVALID_ARGUMENT;                               \
+        if (!(s)) return AT_INVALID_ARGUMENT;                               \
         if ((s)->magic != MAGIC || !(s)->data || (s)->cap == 0)     \
-            return DS_NOT_INITIALIZED;                                      \
+            return AT_NOT_INITIALIZED;                                      \
     } while (0)
 
 
 
 
-int ds_init(dyn_str* s) {
+i32 ds_init(dyn_str* s) {
 
-    if (s->magic == MAGIC) return DS_ALREADY_INITIALIZED;
+    if (s->magic == MAGIC) return AT_ALREADY_INITIALIZED;
 
     s->cap = 4096;
     s->data = malloc(s->cap);
-    if (!s->data) return DS_MEMORY_ERROR;
+    if (!s->data) return AT_MEMORY_ERROR;
 
     s->len = 0;
     s->data[0] = '\0';
     s->magic = MAGIC;
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_init_s(dyn_str* s, const size_t needed_size) {
+i32 ds_init_s(dyn_str* s, const size_t needed_size) {
 
-    if (s->magic == MAGIC) return DS_ALREADY_INITIALIZED;
+    if (s->magic == MAGIC) return AT_ALREADY_INITIALIZED;
 
     s->cap = needed_size + 64;      // add small buffer
     s->data = malloc(s->cap);
-    if (!s->data) return DS_MEMORY_ERROR;
+    if (!s->data) return AT_MEMORY_ERROR;
 
     s->len = 0;
     s->data[0] = '\0';
     s->magic = MAGIC;
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_from_c_str(dyn_str* s, const char* text) {
+i32 ds_from_c_str(dyn_str* s, const char* text) {
 
-    if (s->magic == MAGIC) return DS_ALREADY_INITIALIZED;
-    if (!text) return DS_INVALID_ARGUMENT;
+    if (s->magic == MAGIC) return AT_ALREADY_INITIALIZED;
+    if (!text) return AT_INVALID_ARGUMENT;
 
     const size_t len = strlen(text);
-    const int result = ds_init_s(s, len);
-    if (result != DS_SUCCESS) return result;
+    const i32 result = ds_init_s(s, len);
+    if (result != AT_SUCCESS) return result;
 
     return ds_append_str(s, text);
 }
 
 
-int ds_free(dyn_str* s) {
+i32 ds_free(dyn_str* s) {
 
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
 
     free(s->data);
     s->data = NULL;
     s->len = s->cap = 0;
     s->magic = 0;
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_clear(dyn_str* s) {
+i32 ds_clear(dyn_str* s) {
 
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
 
     s->len = 0;
     s->data[0] = '\0';
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_append_str(dyn_str* s, const char* text) {
+i32 ds_append_str(dyn_str* s, const char* text) {
 
-    VALIDATE_DYN_STR(s);
-    if (!text)    return DS_INVALID_ARGUMENT;
+    VALIDATE(s);
+    if (!text)    return AT_INVALID_ARGUMENT;
 
     const size_t t_len = strlen(text);
-    const int result = ds_ensure(s, t_len);
-    if (result != DS_SUCCESS)   return result;
+    const i32 result = ds_ensure(s, t_len);
+    if (result != AT_SUCCESS)   return result;
 
     memcpy(s->data + s->len, text, t_len);
     s->len += t_len;
     s->data[s->len] = '\0';
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_append_char(dyn_str* s, const char c) {
+i32 ds_append_char(dyn_str* s, const char c) {
 
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
 
-    const int result = ds_ensure(s, 1);
-    if (result != DS_SUCCESS) return result;
+    const i32 result = ds_ensure(s, 1);
+    if (result != AT_SUCCESS) return result;
 
     s->data[s->len++] = c;
     s->data[s->len] = '\0';
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_append_fmt(dyn_str* s, const char* fmt, ...) {
+i32 ds_append_fmt(dyn_str* s, const char* fmt, ...) {
 
-    VALIDATE_DYN_STR(s);
-    if (!fmt) return DS_INVALID_ARGUMENT;
+    VALIDATE(s);
+    if (!fmt) return AT_INVALID_ARGUMENT;
 
     va_list ap;
     va_start(ap, fmt);
@@ -131,75 +124,75 @@ int ds_append_fmt(dyn_str* s, const char* fmt, ...) {
     // determine required size
     va_list ap2;
     va_copy(ap2, ap);
-    const int needed = vsnprintf(NULL, 0, fmt, ap2);
+    const i32 needed = vsnprintf(NULL, 0, fmt, ap2);
     va_end(ap2);
 
     if (needed < 0) {
         va_end(ap);
-        return DS_FORMAT_ERROR;
+        return AT_FORMAT_ERROR;
     }
 
     if (needed > 0) {
 
-        const int result = ds_ensure(s, (size_t)needed);
-        if (result != DS_SUCCESS) {
+        const i32 result = ds_ensure(s, (size_t)needed);
+        if (result != AT_SUCCESS) {
             va_end(ap);
             return result;
         }
 
-        const int written = vsnprintf(s->data + s->len, s->cap - s->len, fmt, ap);
+        const i32 written = vsnprintf(s->data + s->len, s->cap - s->len, fmt, ap);
         if (written < 0) {
             va_end(ap);
-            return DS_FORMAT_ERROR;
+            return AT_FORMAT_ERROR;
         }
 
         s->len += (size_t)written;
     }
     va_end(ap);
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_remove_range(dyn_str* s, const size_t pos, const size_t len) {
+i32 ds_remove_range(dyn_str* s, const size_t pos, const size_t len) {
 
-    VALIDATE_DYN_STR(s);
-    if (pos >= s->len) return DS_RANGE_ERROR;         // tried to remove something not inside the string
-    if (pos + len > s->len) return DS_RANGE_ERROR;    // provided pos + length is longer than string
+    VALIDATE(s);
+    if (pos >= s->len) return AT_RANGE_ERROR;         // tried to remove something not inside the string
+    if (pos + len > s->len) return AT_RANGE_ERROR;    // provided pos + length is longer than string
 
     memmove(s->data + pos, s->data + pos + len, s->len - pos -len + 1);
     s->len -= len;
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_insert_str(dyn_str* s, const size_t pos, const char* str) {
+i32 ds_insert_str(dyn_str* s, const size_t pos, const char* str) {
 
-    VALIDATE_DYN_STR(s);
-    if (!str) return DS_INVALID_ARGUMENT;
-    if (pos > s->len) return DS_RANGE_ERROR;
+    VALIDATE(s);
+    if (!str) return AT_INVALID_ARGUMENT;
+    if (pos > s->len) return AT_RANGE_ERROR;
 
     const size_t str_len = strlen(str);
-    const int result = ds_ensure(s, str_len);
-    if (result != DS_SUCCESS) return result;
+    const i32 result = ds_ensure(s, str_len);
+    if (result != AT_SUCCESS) return result;
 
     memmove(s->data + pos + str_len, s->data + pos, s->len - pos +1);       // make room
     memcpy(s->data + pos, str, str_len);                                    // copy string content
     s->len += str_len;
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }   
 
 // ==================================== compare ====================================
 
-int ds_compare(const dyn_str* s1, const dyn_str* s2) {
-    VALIDATE_DYN_STR(s1);
-    VALIDATE_DYN_STR(s2);
+i32 ds_compare(const dyn_str* s1, const dyn_str* s2) {
+    VALIDATE(s1);
+    VALIDATE(s2);
     
     return strcmp(s1->data, s2->data);
 }
 
-int ds_compare_cstr(const dyn_str* s1, const char* s2) {
-    VALIDATE_DYN_STR(s1);
-    if (!s2) return DS_INVALID_ARGUMENT;
+i32 ds_compare_cstr(const dyn_str* s1, const char* s2) {
+    VALIDATE(s1);
+    if (!s2) return AT_INVALID_ARGUMENT;
     
     return strcmp(s1->data, s2);
 }
@@ -207,7 +200,7 @@ int ds_compare_cstr(const dyn_str* s1, const char* s2) {
 // ==================================== search ====================================
 
 ssize_t ds_find_char(const dyn_str* s, char c, size_t start_pos) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     if (start_pos >= s->len) return -1;
     
     char* found = memchr(s->data + start_pos, c, s->len - start_pos);
@@ -215,7 +208,7 @@ ssize_t ds_find_char(const dyn_str* s, char c, size_t start_pos) {
 }
 
 ssize_t ds_find_str(const dyn_str* s, const char* substr, size_t start_pos) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     if (!substr) return -1;
     if (start_pos >= s->len) return -1;
     
@@ -224,7 +217,7 @@ ssize_t ds_find_str(const dyn_str* s, const char* substr, size_t start_pos) {
 }
 
 ssize_t ds_find_last_char(const dyn_str* s, char c) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     
     for (ssize_t i = s->len - 1; i >= 0; i--) {
         if (s->data[i] == c) return i;
@@ -233,7 +226,7 @@ ssize_t ds_find_last_char(const dyn_str* s, char c) {
 }
 
 ssize_t ds_find_last_str(const dyn_str* s, const char* substr) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     if (!substr) return -1;
     
     size_t substr_len = strlen(substr);
@@ -248,28 +241,28 @@ ssize_t ds_find_last_str(const dyn_str* s, const char* substr) {
 
 // ==================================== substring ====================================
 
-int ds_substring(const dyn_str* s, size_t start, size_t len, dyn_str* result) {
-    VALIDATE_DYN_STR(s);
-    if (!result) return DS_INVALID_ARGUMENT;
-    if (start >= s->len) return DS_RANGE_ERROR;
+i32 ds_substring(const dyn_str* s, size_t start, size_t len, dyn_str* result) {
+    VALIDATE(s);
+    if (!result) return AT_INVALID_ARGUMENT;
+    if (start >= s->len) return AT_RANGE_ERROR;
     if (start + len > s->len) len = s->len - start;
     
     // Initialize result string
-    int init_result = ds_init_s(result, len);
-    if (init_result != DS_SUCCESS) return init_result;
+    i32 init_result = ds_init_s(result, len);
+    if (init_result != AT_SUCCESS) return init_result;
     
     // Copy the substring
     memcpy(result->data, s->data + start, len);
     result->len = len;
     result->data[len] = '\0';
     
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
-int ds_substring_from(const dyn_str* s, size_t start, dyn_str* result) {
-    VALIDATE_DYN_STR(s);
-    if (!result) return DS_INVALID_ARGUMENT;
-    if (start >= s->len) return DS_RANGE_ERROR;
+i32 ds_substring_from(const dyn_str* s, size_t start, dyn_str* result) {
+    VALIDATE(s);
+    if (!result) return AT_INVALID_ARGUMENT;
+    if (start >= s->len) return AT_RANGE_ERROR;
     
     size_t len = s->len - start;
     return ds_substring(s, start, len, result);
@@ -279,52 +272,52 @@ int ds_substring_from(const dyn_str* s, size_t start, dyn_str* result) {
 
 // ==================================== transformation ====================================
 
-int ds_to_lowercase(dyn_str* s) {
-    VALIDATE_DYN_STR(s);
+i32 ds_to_lowercase(dyn_str* s) {
+    VALIDATE(s);
     
     for (size_t i = 0; i < s->len; i++) {
         if (s->data[i] >= 'A' && s->data[i] <= 'Z') {
             s->data[i] = s->data[i] + ('a' - 'A');
         }
     }
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
-int ds_to_uppercase(dyn_str* s) {
-    VALIDATE_DYN_STR(s);
+i32 ds_to_uppercase(dyn_str* s) {
+    VALIDATE(s);
     
     for (size_t i = 0; i < s->len; i++) {
         if (s->data[i] >= 'a' && s->data[i] <= 'z') {
             s->data[i] = s->data[i] - ('a' - 'A');
         }
     }
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
-int ds_reverse(dyn_str* s) {
-    VALIDATE_DYN_STR(s);
+i32 ds_reverse(dyn_str* s) {
+    VALIDATE(s);
     
     for (size_t i = 0; i < s->len / 2; i++) {
         char temp = s->data[i];
         s->data[i] = s->data[s->len - 1 - i];
         s->data[s->len - 1 - i] = temp;
     }
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 // ==================================== trim ====================================
 
-int ds_trim(dyn_str* s) {
-    VALIDATE_DYN_STR(s);
+i32 ds_trim(dyn_str* s) {
+    VALIDATE(s);
     
-    int result = ds_trim_start(s);
-    if (result != DS_SUCCESS) return result;
+    i32 result = ds_trim_start(s);
+    if (result != AT_SUCCESS) return result;
     
     return ds_trim_end(s);
 }
 
-int ds_trim_start(dyn_str* s) {
-    VALIDATE_DYN_STR(s);
+i32 ds_trim_start(dyn_str* s) {
+    VALIDATE(s);
     
     size_t leading_spaces = 0;
     while (leading_spaces < s->len && 
@@ -340,11 +333,11 @@ int ds_trim_start(dyn_str* s) {
         s->len -= leading_spaces;
     }
     
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
-int ds_trim_end(dyn_str* s) {
-    VALIDATE_DYN_STR(s);
+i32 ds_trim_end(dyn_str* s) {
+    VALIDATE(s);
     
     size_t trailing_spaces = 0;
     while (trailing_spaces < s->len && 
@@ -360,51 +353,41 @@ int ds_trim_end(dyn_str* s) {
         s->data[s->len] = '\0';
     }
     
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 // ==================================== replacement ====================================
 
-int ds_replace(dyn_str* s, const char* old_str, const char* new_str) {
-    VALIDATE_DYN_STR(s);
-    if (!old_str || !new_str) return DS_INVALID_ARGUMENT;
+i32 ds_replace(dyn_str* s, const char* old_str, const char* new_str) {
+    VALIDATE(s);
+    if (!old_str || !new_str) return AT_INVALID_ARGUMENT;
     
-    size_t old_len = strlen(old_str);
-    size_t new_len = strlen(new_str);
-    
-    if (old_len == 0) return DS_SUCCESS; // Nothing to replace
+    const size_t old_len = strlen(old_str);
+    if (old_len == 0) return AT_SUCCESS; // Nothing to replace
     
     // Find all occurrences
     dyn_str result;
-    int init_result = ds_init(&result);
-    if (init_result != DS_SUCCESS) return init_result;
+    const i32 init_result = ds_init(&result);
+    if (init_result != AT_SUCCESS) return init_result;
     
     size_t pos = 0;
     ssize_t found_pos;
     
     while ((found_pos = ds_find_str(s, old_str, pos)) != -1) {
-        // Append the part before the match
-        ds_append_fmt(&result, "%.*s", (int)(found_pos - pos), s->data + pos);
-        
-        // Append the replacement
-        ds_append_str(&result, new_str);
-        
-        // Move position after the match
-        pos = found_pos + old_len;
+        ds_append_fmt(&result, "%.*s", (i32)(found_pos - pos), s->data + pos);      // Append the part before the match
+        ds_append_str(&result, new_str);            // Append the replacement
+        pos = found_pos + old_len;                  // Move position after the match
     }
     
-    // Append the remaining part
-    ds_append_str(&result, s->data + pos);
-    
-    // Swap the contents
-    ds_free(s);
+    ds_append_str(&result, s->data + pos);          // Append the remaining part
+    ds_free(s);                                     // Swap the contents
     *s = result;
     
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
-int ds_replace_char(dyn_str* s, char old_char, char new_char) {
-    VALIDATE_DYN_STR(s);
+i32 ds_replace_char(dyn_str* s, char old_char, char new_char) {
+    VALIDATE(s);
     
     for (size_t i = 0; i < s->len; i++) {
         if (s->data[i] == old_char) {
@@ -412,48 +395,48 @@ int ds_replace_char(dyn_str* s, char old_char, char new_char) {
         }
     }
     
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 // ==================================== conversion ====================================
 
-int ds_to_int(const dyn_str* s, int* result) {
-    VALIDATE_DYN_STR(s);
-    if (!result) return DS_INVALID_ARGUMENT;
+i32 ds_to_int(const dyn_str* s, int* result) {
+    VALIDATE(s);
+    if (!result) return AT_INVALID_ARGUMENT;
     
     char* endptr;
     long value = strtol(s->data, &endptr, 10);
     
     if (endptr == s->data) {
-        return DS_ERROR; // No conversion performed
+        return AT_ERROR; // No conversion performed
     }
     
     if (value > INT_MAX || value < INT_MIN) {
-        return DS_RANGE_ERROR;
+        return AT_RANGE_ERROR;
     }
     
     *result = (int)value;
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
-int ds_to_double(const dyn_str* s, double* result) {
-    VALIDATE_DYN_STR(s);
-    if (!result) return DS_INVALID_ARGUMENT;
+i32 ds_to_double(const dyn_str* s, double* result) {
+    VALIDATE(s);
+    if (!result) return AT_INVALID_ARGUMENT;
     
     char* endptr;
     *result = strtod(s->data, &endptr);
     
     if (endptr == s->data) {
-        return DS_ERROR; // No conversion performed
+        return AT_ERROR; // No conversion performed
     }
     
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 // ==================================== util ====================================
 
 b8 ds_starts_with(const dyn_str* s, const char* prefix) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     if (!prefix) return false;
     
     size_t prefix_len = strlen(prefix);
@@ -463,7 +446,7 @@ b8 ds_starts_with(const dyn_str* s, const char* prefix) {
 }
 
 b8 ds_ends_with(const dyn_str* s, const char* suffix) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     if (!suffix) return false;
     
     size_t suffix_len = strlen(suffix);
@@ -473,23 +456,23 @@ b8 ds_ends_with(const dyn_str* s, const char* suffix) {
 }
 
 b8 ds_contains(const dyn_str* s, const char* substr) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     if (!substr) return false;
     
     return strstr(s->data, substr) != NULL;
 }
 
 char ds_char_at(const dyn_str* s, size_t pos) {
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
     if (pos >= s->len) return '\0';
     
     return s->data[pos];
 }
 
 
-int ds_ensure(dyn_str* s, const size_t extra) {
+i32 ds_ensure(dyn_str* s, const size_t extra) {
 
-    VALIDATE_DYN_STR(s);
+    VALIDATE(s);
 
     const size_t need = s->len + extra + 1;
     if (need > s->cap) {
@@ -497,17 +480,17 @@ int ds_ensure(dyn_str* s, const size_t extra) {
             s->cap *= 2;
 
         char* new_data = realloc(s->data, s->cap);
-        if (!new_data)  return DS_MEMORY_ERROR;
+        if (!new_data)  return AT_MEMORY_ERROR;
         s->data = new_data;
     }
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }
 
 
-int ds_iterate_lines(const dyn_str* s, b8 (*callback)(const char* line, size_t len, void* user_data), void* user_data) {
+i32 ds_iterate_lines(const dyn_str* s, b8 (*callback)(const char* line, size_t len, void* user_data), void* user_data) {
     
-    VALIDATE_DYN_STR(s);
-    if (!callback) return DS_INVALID_ARGUMENT;
+    VALIDATE(s);
+    if (!callback) return AT_INVALID_ARGUMENT;
     
     char *start = s->data;
     char *end = s->data + s->len;
@@ -523,5 +506,5 @@ int ds_iterate_lines(const dyn_str* s, b8 (*callback)(const char* line, size_t l
         start = new_line + 1;
     }
     
-    return DS_SUCCESS;
+    return AT_SUCCESS;
 }

@@ -1,4 +1,5 @@
 
+#include "util/io/logger.h"
 #include "imgui_config/imgui_config.h"
 
 #include "dashboard.h"
@@ -16,12 +17,15 @@ b8 dashboard_init() {
 //
 void dashboard_shutdown() {
 
+    LOG_SHUTDOWN
 }
 
 //
-void dashboard_update(__attribute_maybe_unused__ const f32 delta_time) {
+void dashboard_on_crash() { LOG(Debug, "User crash_callback")}
 
-}
+
+//
+void dashboard_update(__attribute_maybe_unused__ const f32 delta_time) { }
 
 //
 void dashboard_draw(__attribute_maybe_unused__ const f32 delta_time) {

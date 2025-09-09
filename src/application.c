@@ -1,6 +1,7 @@
 
 #include "util/io/logger.h"
 #include "util/io/serializer_yaml.h"
+#include "util/crash_handler.h"
 #include "util/system.h"
 #include "imgui_config/imgui_config.h"
 #include "dashboard/dashboard.h"
@@ -20,6 +21,7 @@ static application_state app_state;
 // FPS control
 // ============================================================================================================================================
 
+static u32 dashboard_crash_callback;
 static f64 s_desired_loop_duration_s = 10.f;       // in seconds
 static f64 s_loop_start_time = 0.f;
 static f64 s_delta_time = 0.f;
@@ -100,6 +102,7 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
 #endif
 
 
+    dashboard_crash_callback = crash_handler_subscribe_callback(dashboard_on_crash);
 
     app_state.is_running = true;
     LOG_INIT
@@ -108,6 +111,8 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
 
 
 void application_shutdown() {
+
+    crash_handler_unsubscribe_callback(dashboard_crash_callback);
 
     imgui_shutdown();
     // renderer_shutdown(&app_state.renderer);
