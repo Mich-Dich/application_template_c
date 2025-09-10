@@ -3,15 +3,22 @@
 #include <sys/time.h>
 #include <libgen.h> 
 #include <stdio.h>
-#include <unistd.h>   // for readlink
-#include <limits.h>   // for PATH_MAX
-#include <string.h>   // for strncpy
+#include <unistd.h>
+#include <limits.h>
+#include <string.h>
 #include <errno.h>
 #include <stdint.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
+#include "util/io/logger.h"
 #include "system.h"
 
 
+
+// ------------------------------------------------------------------------------------------------------------------
+// timeing
+// ------------------------------------------------------------------------------------------------------------------
 
 f64 get_precise_time() {
 
@@ -86,11 +93,12 @@ system_time get_system_time() {
 }
 
 
-
-#if 1
-
+// ------------------------------------------------------------------------------------------------------------------
+// executable path
+// ------------------------------------------------------------------------------------------------------------------
 
 static char executable_path[PATH_MAX] = {0};
+
 
 const char* get_executable_path() {
     if (executable_path[0] != '\0') {
@@ -119,26 +127,6 @@ const char* get_executable_path() {
 }
 
 
-#else
-
-const char* get_executable_path() {
-
-    char path[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len == -1) { 
-        perror("readlink");
-        return NULL;
-    }
-    path[len] = '\0'; // add null terminator 
-    // dirname may modify the string, so we copy it first
-    char dir[PATH_MAX];
-    strncpy(dir, path, sizeof(dir));
-    return dirname(dir);
-}
-
-#endif
-
-
 int get_executable_path_buf(char *out, size_t outlen) {
 
     char path[PATH_MAX];
@@ -157,4 +145,111 @@ int get_executable_path_buf(char *out, size_t outlen) {
     strncpy(out, d, outlen);
     out[outlen-1] = '\0';
     return 0;
+}
+
+
+// ------------------------------------------------------------------------------------------------------------------
+// filesystem
+// ------------------------------------------------------------------------------------------------------------------
+
+// 
+static b8 system_ensure_directory_exists(const char *path) {
+    
+    if (!path || *path == '\0') return true; // empty path -> current dir 
+
+    if (strlen(path) >= PATH_MAX) {
+        LOG(Error, "path too long: %s\n", path);
+        return false;
+    }
+
+    char tmp[PATH_MAX];
+    strncpy(tmp, path, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+
+    struct stat st;
+    // If path already exists and is a directory, success 
+    if (stat(tmp, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) return true;
+        LOG(Error, "path exists but is not a directory: %s\n", tmp);
+        return false;
+    } else if (errno != ENOENT) {
+        // unexpected stat() error 
+        LOG(Error, "stat(%s) failed: %s\n", tmp, strerror(errno));
+        return false;
+    }
+
+    // Walk the path, creating components as needed. Start at 1 to preserve leading '/' for absolute paths. 
+    size_t len = strlen(tmp);
+    for (size_t i = 1; i <= len; ++i) {
+        if (tmp[i] == '/' || tmp[i] == '\0') {
+            char save = tmp[i];
+            tmp[i] = '\0';
+
+            // skip if empty (can happen for leading slash) 
+            if (tmp[0] != '\0') {
+                if (stat(tmp, &st) != 0) {
+                    if (errno == ENOENT) {
+                        if (mkdir(tmp, 0755) != 0) {
+                            if (errno != EEXIST) {
+                                LOG(Error, "mkdir(%s) failed: %s\n", tmp, strerror(errno));
+                                return false;
+                            }
+                        }
+                    } else {
+                        LOG(Error, "stat(%s) failed: %s\n", tmp, strerror(errno));
+                        return false;
+                    }
+                } else {
+                    // exists: ensure it is a directory 
+                    if (!S_ISDIR(st.st_mode)) {
+                        LOG(Error, "path component exists but not a directory: %s\n", tmp);
+                        return false;
+                    }
+                }
+            }
+
+            tmp[i] = save;
+        }
+    }
+
+    // Final check: path should now exist and be a directory 
+    if (stat(path, &st) != 0) {
+        LOG(Error, "final stat(%s) failed: %s\n", path, strerror(errno));
+        return false;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        LOG(Error, "final path exists but not a directory: %s\n", path);
+        return false;
+    }
+    return true;
+}
+
+// Ensure file exists: create an empty file if missing, but DO NOT overwrite an existing file.
+static b8 system_ensure_file_exists(const char* file_path) {
+
+    int fd = open(file_path, O_RDONLY);
+    if (fd >= 0) {      // file already exists
+        close(fd);
+
+    } else {
+        if (errno == ENOENT) {
+            // try to create atomically: O_CREAT | O_EXCL won't overwrite existing file
+            int create_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); // 0644
+            if (create_fd >= 0) {
+                close(create_fd);                                       // created an empty file
+            } else {
+                if (errno == EEXIST) {
+                    // race: somebody created it concurrently — treat as success
+
+                } else {
+                    LOG(Error, "failed to create file %s: %s\n", file_path, strerror(errno));
+                    return false;
+                }
+            }
+        } else {
+            // some other error trying to stat/open the file
+            LOG(Error, "error checking file %s: %s\n", file_path, strerror(errno));
+            return false;
+        }
+    }
 }

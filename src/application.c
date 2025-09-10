@@ -67,7 +67,23 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
     f32 test_f32_s = 666.5050;
     
     serializer_yaml sy;
-    ASSERT(yaml_serializer_init(&sy, "config/test.yml", "main_section", SERIALIZER_OPTION_SAVE), "", "");
+
+    const char* exec_path = get_executable_path();
+    // char exec_path[4096] = {0};
+    // get_executable_path_buf(exec_path, sizeof(exec_path));
+    // ASSERT(exec_path != NULL, "", "FAILED")
+
+    char loc_file_path[4096];
+    memset(loc_file_path, '\0', sizeof(loc_file_path));
+    const int written = snprintf(loc_file_path, sizeof(loc_file_path), "%s/%s", exec_path, "config");
+    if (written < 0 || (size_t)written >= sizeof(loc_file_path)) {
+        fprintf(stderr, "Path too long: %s/%s\n", exec_path, "config");
+        return false; // or handle error properly
+    }
+
+
+
+    ASSERT(yaml_serializer_init(&sy, loc_file_path, "test.yml", "main_section", SERIALIZER_OPTION_LOAD), "", "");
 
     LOG(Trace, "ptr: [%p]", &test_i32)
     LOG(Trace, "value: [%u]", test_i32)

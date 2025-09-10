@@ -10,6 +10,10 @@ typedef struct {
 
 
 
+// ------------------------------------------------------------------------------------------------------------------
+// timeing
+// ------------------------------------------------------------------------------------------------------------------
+
 // @brief Retrieves the current high-precision time using a monotonic clock.
 //        The returned value is not affected by system clock adjustments,
 //        making it suitable for measuring elapsed time accurately.
@@ -25,6 +29,10 @@ f64 get_precise_time();
 void precise_sleep(const f64 seconds);
 
 
+// ------------------------------------------------------------------------------------------------------------------
+// executable path
+// ------------------------------------------------------------------------------------------------------------------
+
 // @brief Retrieves the current local system time, including year, month, day,
 //        hour, minute, second, and millisecond.
 //        Uses `gettimeofday` and `localtime_r` for thread-safe access.
@@ -38,5 +46,16 @@ system_time get_system_time();
 //         Returns `NULL` if the path cannot be resolved.
 const char* get_executable_path();
 
-
+//
 int get_executable_path_buf(char *out, size_t outlen);
+
+
+// ------------------------------------------------------------------------------------------------------------------
+// filesystem
+// ------------------------------------------------------------------------------------------------------------------
+
+//
+static b8 system_ensure_file_exists(const char* file_path);
+
+//
+static b8 system_ensure_directory_exists(const char *path);

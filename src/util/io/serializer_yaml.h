@@ -31,7 +31,7 @@ typedef struct {
 
 
 // Core functions
-b8 yaml_serializer_init(serializer_yaml* sy, const char* file_path, const char* section_name, const serializer_option option);
+b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const char* file_name, const char* section_name, const serializer_option option);
 void yaml_serializer_shutdown(serializer_yaml* sy);
 
 // Entry functions for different types

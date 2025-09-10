@@ -1,7 +1,12 @@
 
+#include <errno.h>
 #include <string.h>
 #include <regex.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "util/io/logger.h"
 #include "util/util.h"
@@ -108,8 +113,6 @@ b8 get_content_of_section(serializer_yaml* serializer) {
 }
 
 
-#if 1
-
 void save_section() {
 
     /* TODO:
@@ -133,86 +136,6 @@ void save_section() {
     */
 
 }
-
-#else
-
-void save_section(serializer_yaml* serializer) {
-    if (!serializer || !serializer->fp) return;
-
-    // Create a temporary file to write the modified content
-    char temp_path[PATH_MAX];
-    snprintf(temp_path, sizeof(temp_path), "%s.tmp", serializer->file_path);
-    FILE* temp_fp = fopen(temp_path, "w");
-    if (!temp_fp) return;
-
-    rewind(serializer->fp);
-    char line[STR_LINE_LEN];
-    b8 in_target_section = false;
-    b8 section_written = false;
-
-    while (fgets(line, sizeof(line), serializer->fp)) {
-        u32 current_indent = get_indentation(line);
-        const char* content = skip_indentation(line);
-
-        // Check if we're entering our target section
-        if (!in_target_section && current_indent == serializer->current_indentation - 1) {
-            char section_header[STR_LINE_LEN];
-            snprintf(section_header, sizeof(section_header), "%s:", serializer->current_section_name);
-            
-            if (strncmp(content, section_header, strlen(section_header)) == 0) {
-                in_target_section = true;
-                // Write the section header
-                write_indentation(temp_fp, current_indent);
-                fputs(section_header, temp_fp);
-                fputc('\n', temp_fp);
-                
-                // Write the modified section content
-                const char* section_data = serializer->section_content.data;
-                size_t len = serializer->section_content.len;
-                
-                for (size_t i = 0; i < len; ) {
-                    size_t line_end = i;
-                    while (line_end < len && section_data[line_end] != '\n') {
-                        line_end++;
-                    }
-                    
-                    if (line_end > i) {
-                        write_indentation(temp_fp, serializer->current_indentation);
-                        fwrite(section_data + i, 1, line_end - i, temp_fp);
-                        fputc('\n', temp_fp);
-                    }
-                    
-                    i = line_end + 1;
-                }
-                
-                section_written = true;
-                continue; // Skip writing the original line
-            }
-        }
-        
-        // Check if we're leaving the section
-        if (in_target_section && current_indent < serializer->current_indentation) {
-            in_target_section = false;
-        }
-        
-        // Write lines that aren't part of the modified section
-        if (!in_target_section || !section_written) {
-            fputs(line, temp_fp);
-        }
-    }
-
-    fclose(temp_fp);
-    fclose(serializer->fp);
-    
-    // Replace the original file with the temporary file
-    remove(serializer->file_path);
-    rename(temp_path, serializer->file_path);
-    
-    // Reopen the file for further operations
-    serializer->fp = fopen(serializer->file_path, "r+");
-}
-
-#endif
 
 // ============================================================================================================================================
 // value parsing
@@ -356,38 +279,50 @@ b8 get_value(serializer_yaml* serializer, const char* key, const char* format, h
 // serializer
 // ============================================================================================================================================
 
-// Core functions
-b8 yaml_serializer_init(serializer_yaml* serializer, const char* file_path, const char* section_name, const serializer_option option) {
-    
-    ASSERT(file_path != NULL, "", "failed to provide a file path")
 
-    char exec_path[PATH_MAX] = {0};
-    get_executable_path_buf(exec_path, sizeof(exec_path));
-    ASSERT(exec_path != NULL, "", "FAILED")
+// Core functions
+b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const char* file_name, const char* section_name, const serializer_option option) {
+    
+    ASSERT(dir_path != NULL, "", "failed to provide a directory path");
+    ASSERT(file_name != NULL, "", "failed to provide a file name");
+    ASSERT(section_name != NULL, "", "failed to provide a section name");
+
+    if (!system_ensure_directory_exists(dir_path)) {
+        LOG(Error, "failed to create directory: %s\n", dir_path);
+        return false;
+    }
 
     char loc_file_path[PATH_MAX];
-    memset(loc_file_path, '\0', sizeof(loc_file_path));
-    const int written = snprintf(loc_file_path, sizeof(loc_file_path), "%s/%s", exec_path, file_path);
+    memset(loc_file_path, 0, sizeof(loc_file_path));
+
+
+    // Build full path safely: dir_path + "/" + file_name
+    size_t dir_len = strlen(dir_path);
+    size_t file_len = strlen(file_name);
+
+    if (dir_len + 1 + file_len + 1 > sizeof(loc_file_path)) {
+        LOG(Error, "Path too long: %s/%s\n", dir_path, file_name);
+        return false;
+    }
+
+    const int written = snprintf(loc_file_path, sizeof(loc_file_path), "%s/%s", dir_path, file_name);           // Use snprintf safely
+
     if (written < 0 || (size_t)written >= sizeof(loc_file_path)) {
-        fprintf(stderr, "Path too long: %s/%s\n", exec_path, file_path);
-        return false; // or handle error properly
+        LOG(Error, "Path too long or snprintf failed: %s/%s\n", dir_path, file_name);
+        return false;
     }
 
-    // if LOAD make sure file exists
-    if (option == SERIALIZER_OPTION_LOAD) {
+    system_ensure_file_exists(loc_file_path);
 
-        LOG(Trace, "opening file [%s]", loc_file_path)
-        FILE* fp = fopen(loc_file_path, "r");
-        VALIDATE(fp, return false, "", "Failed to open file [%s]", loc_file_path)
-        fclose(fp);
-    }
+    serializer->fp = fopen(loc_file_path, "r");                                                                 // Open file for reading (saving will happen later in shutdown)
+    VALIDATE(serializer->fp, return false, "", "Failed to open file [%s]", loc_file_path);
 
-    serializer->fp = fopen(loc_file_path, "r");         // always open in read mode (saving will be done in shutdown)
-    VALIDATE(serializer->fp, return false, "", "Failed to open file [%s]", loc_file_path)
+    serializer->option = option;                                                                                // Store serializer settings
 
-    serializer->option = option;
-    strncpy(serializer->current_section_name, section_name, strlen(section_name));
-    ds_init(&serializer->section_content);
+    strncpy(serializer->current_section_name, section_name, sizeof(serializer->current_section_name) - 1);      // Copy section name safely
+    serializer->current_section_name[sizeof(serializer->current_section_name) - 1] = '\0';
+
+    ds_init(&serializer->section_content);                                                                      // Initialize dynamic string buffer and parse initial section
     get_content_of_section(serializer);
 
     return true;
@@ -399,7 +334,6 @@ void yaml_serializer_shutdown(serializer_yaml* serializer) {
 
     LOG(Info, "serializer->section_content: \n%s", serializer->section_content.data)
 
-
     // TODO: need to save this at the right location in the file and remember to save the section_header as well
     // if (serializer->option == SERIALIZER_OPTION_SAVE)           // dump content to file
     //     fputs(&serializer->section_content, serializer->fp);
@@ -410,7 +344,6 @@ void yaml_serializer_shutdown(serializer_yaml* serializer) {
         serializer->fp = NULL;
     }
     ds_free(&serializer->section_content);
-
 }
 
 
@@ -449,7 +382,6 @@ void yaml_serializer_subsection_end(serializer_yaml* serializer) {
     }
 
     get_content_of_section(serializer);                         // get content of new section
-
 }
 
 
