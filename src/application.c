@@ -83,7 +83,7 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
 
 
 
-    ASSERT(yaml_serializer_init(&sy, loc_file_path, "test.yml", "main_section", SERIALIZER_OPTION_LOAD), "", "");
+    ASSERT(yaml_serializer_init(&sy, loc_file_path, "test.yml", "main_section", SERIALIZER_OPTION_SAVE), "", "");
 
     LOG(Trace, "ptr: [%p]", &test_i32)
     LOG(Trace, "value: [%u]", test_i32)
@@ -106,15 +106,15 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
 
     yaml_serializer_shutdown(&sy);
 
-    LOG(Debug, "test_i32:       [%u]", test_i32)
-    LOG(Debug, "test_f32:       [%f]", test_f32)
-    LOG(Debug, "test_bool       [%d]", test_bool)
-    LOG(Debug, "test_long_long  [%Lf]", test_long_long)
-    LOG(Debug, "test_str        [%s]", test_str)
+    LOG(Trace, "test_i32:       [%u]", test_i32)
+    LOG(Trace, "test_f32:       [%f]", test_f32)
+    LOG(Trace, "test_bool       [%d]", test_bool)
+    LOG(Trace, "test_long_long  [%Lf]", test_long_long)
+    LOG(Trace, "test_str        [%s]", test_str)
 
 #if USE_SUB_SECTION
-    LOG(Debug, "SubSection: sub_section")
-    LOG(Debug, "test_f32_s:         [%f]", test_f32_s)
+    LOG(Trace, "SubSection: sub_section")
+    LOG(Trace, "test_f32_s:         [%f]", test_f32_s)
 #endif
 
 

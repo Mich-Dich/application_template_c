@@ -16,7 +16,9 @@ typedef struct {
 
 
 
-// ==================================== init ====================================
+// ============================================================================================================================================
+// init
+// ============================================================================================================================================
 
 // @brief Initializes a dynamic string to an empty state,
 //          allocates inital memory with default capacity
@@ -34,7 +36,11 @@ i32 ds_init_s(dyn_str* s, const size_t needed_size);
 i32 ds_from_c_str(dyn_str* s, const char* text);
 
 
-// ==================================== free ====================================
+i32 ds_from_file(dyn_str* s, FILE* file);
+
+// ============================================================================================================================================
+// free
+// ============================================================================================================================================
 
 // @brief Frees the memory used by the dynamic string
 //          after this call, the string will be in an uninitialized state
@@ -45,7 +51,9 @@ i32 ds_free(dyn_str* s);
 //          Resets length to zero but maintains current capacity
 i32 ds_clear(dyn_str* s);
 
-// ==================================== append ====================================
+// ============================================================================================================================================
+// append
+// ============================================================================================================================================
 
 // @brief Appends a C-string to the end of the dynamic string
 // @param test The null-terminated string to append
@@ -63,7 +71,9 @@ i32 ds_append_char(dyn_str* s, const char c);
 // @param ... The arguments to format
 i32 ds_append_fmt(dyn_str* s, const char* fmt, ...);
 
-// ==================================== remove ====================================
+// ============================================================================================================================================
+// remove
+// ============================================================================================================================================
 
 // @brief Removes a range of characters from the dynamic string.
 // @param pos Starting position of the range to remove.
@@ -76,7 +86,10 @@ i32 ds_remove_range(dyn_str* s, const size_t pos, const size_t len);
 // @param str The null-terminated strings to insert
 i32 ds_insert_str(dyn_str* s, const size_t pos, const char* str);
 
-// ==================================== compare ====================================
+
+// ============================================================================================================================================
+// compare
+// ============================================================================================================================================
 
 // @brief Compares two dynamic strings
 // @return 0 if equal, negative if s1 < s2, positive if s1 > s2
@@ -87,7 +100,9 @@ i32 ds_compare(const dyn_str* s1, const dyn_str* s2);
 // @return 0 if equal, negative if s1 < s2, positive if s1 > s2
 i32 ds_compare_cstr(const dyn_str* s1, const char* s2);
 
-// ==================================== search ====================================
+// ============================================================================================================================================
+// search
+// ============================================================================================================================================
 
 // @brief Finds the first occurrence of a character in the dynamic string
 // @return Position of character or -1 if not found
@@ -108,7 +123,9 @@ ssize_t ds_find_last_char(const dyn_str* s, char c);
 // @return Position of substring or -1 if not found
 ssize_t ds_find_last_str(const dyn_str* s, const char* substr);
 
-// ==================================== substring ====================================
+// ============================================================================================================================================
+// substring
+// ============================================================================================================================================
 
 // @brief Extracts a substring from the dynamic string
 // @param start Starting position of the substring
@@ -120,7 +137,9 @@ i32 ds_substring(const dyn_str* s, size_t start, size_t len, dyn_str* result);
 // @brief Extracts a substring from start to the end of the string
 i32 ds_substring_from(const dyn_str* s, size_t start, dyn_str* result);
 
-// ==================================== transformation ====================================
+// ============================================================================================================================================
+// transformation
+// ============================================================================================================================================
 
 // @brief Converts all characters in the string to lowercase
 i32 ds_to_lowercase(dyn_str* s);
@@ -133,7 +152,9 @@ i32 ds_to_uppercase(dyn_str* s);
 // @brief Reverses the string in place
 i32 ds_reverse(dyn_str* s);
 
-// ==================================== trim ====================================
+// ============================================================================================================================================
+// trim
+// ============================================================================================================================================
 
 // @brief Removes whitespace from the beginning and end of the string
 i32 ds_trim(dyn_str* s);
@@ -146,16 +167,24 @@ i32 ds_trim_start(dyn_str* s);
 // @brief Removes whitespace from the end of the string
 i32 ds_trim_end(dyn_str* s);
 
-// ==================================== replacement ====================================
+// ============================================================================================================================================
+// replacement
+// ============================================================================================================================================
 
 // @brief Replaces all occurrences of a substring with another string
 i32 ds_replace(dyn_str* s, const char* old_str, const char* new_str);
 
 
+//
+i32 ds_replace_range(dyn_str* s, const size_t start_pos, const size_t length, const char* new_str);
+
+
 // @brief Replaces a character with another character
 i32 ds_replace_char(dyn_str* s, char old_char, char new_char);
 
-// ==================================== conversion ====================================
+// ============================================================================================================================================
+// conversion
+// ============================================================================================================================================
 
 // @brief Converts the dynamic string to an integer
 // @param[out] result Pointer to store the converted integer
@@ -168,7 +197,9 @@ i32 ds_to_int(const dyn_str* s, int* result);
 // @return AT_SUCCESS on success, error code on failure
 i32 ds_to_double(const dyn_str* s, double* result);
 
-// ==================================== util ====================================
+// ============================================================================================================================================
+// util
+// ============================================================================================================================================
 
 // @brief Checks if the string starts with the specified prefix
 b8 ds_starts_with(const dyn_str* s, const char* prefix);
@@ -198,16 +229,3 @@ i32 ds_iterate_lines(const dyn_str* ds, b8 (*callback)(const char* line, size_t 
 //          at least "extra" more characters beyond its current length.
 //          If necessary, reallocates the internal buffer.
 i32 ds_ensure(dyn_str* s, const size_t extra);
-
-
-
-
-/*
-
-The tutorial should be educational, but not targeting total beginners,
-viewer should have a basic under standing of syntax, c internal logic, and common practices.
-
-As this is a programming tutorial, remove useless phrases and try to distill the most 
-information in short sentences.
-
-*/

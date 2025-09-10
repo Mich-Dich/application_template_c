@@ -153,7 +153,7 @@ int get_executable_path_buf(char *out, size_t outlen) {
 // ------------------------------------------------------------------------------------------------------------------
 
 // 
-static b8 system_ensure_directory_exists(const char *path) {
+b8 system_ensure_directory_exists(const char *path) {
     
     if (!path || *path == '\0') return true; // empty path -> current dir 
 
@@ -225,7 +225,7 @@ static b8 system_ensure_directory_exists(const char *path) {
 }
 
 // Ensure file exists: create an empty file if missing, but DO NOT overwrite an existing file.
-static b8 system_ensure_file_exists(const char* file_path) {
+b8 system_ensure_file_exists(const char* file_path) {
 
     int fd = open(file_path, O_RDONLY);
     if (fd >= 0) {      // file already exists

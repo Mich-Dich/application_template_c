@@ -6,7 +6,7 @@
 
 int main(int argc, char *argv[]) {
 
-    ASSERT_SS(logger_init("[$B$T.$J $L$E][$B$Q $I $P:$G$E] $C", true, "logs", "application", false))            // logger should be external to application
+    ASSERT_SS(logger_init("[$B$T.$J $L$E][$B$Q $I $F:$G$E] $C", true, "logs", "application", false))            // logger should be external to application
     LOGGER_REGISTER_THREAD_LABEL("main")
     ASSERT_SS(crash_handler_init())
     crash_handler_subscribe_callback(logger_shutdown);

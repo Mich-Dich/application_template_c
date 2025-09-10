@@ -19,6 +19,10 @@
 
 
 
+// ============================================================================================================================================
+// init
+// ============================================================================================================================================
+
 i32 ds_init(dyn_str* s) {
 
     if (s->magic == MAGIC) return AT_ALREADY_INITIALIZED;
@@ -60,6 +64,44 @@ i32 ds_from_c_str(dyn_str* s, const char* text) {
 
     return ds_append_str(s, text);
 }
+
+
+i32 ds_from_file(dyn_str* s, FILE* file) {
+
+    if (s->magic == MAGIC) return AT_ALREADY_INITIALIZED;
+    if (!file) return AT_INVALID_ARGUMENT;
+
+    // Get file size
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    rewind(file);
+    
+    if (file_size < 0) return AT_IO_ERROR;
+    
+    // Initialize with the file size
+    i32 result = ds_init_s(s, (size_t)file_size);
+    if (result != AT_SUCCESS) return result;
+    
+    // Read file content directly into the buffer
+    s->len = fread(s->data, 1, (size_t)file_size, file);
+    if (s->len != (size_t)file_size) {
+        // Handle read error
+        free(s->data);
+        s->magic = 0;
+        return AT_IO_ERROR;
+    }
+    
+    // Ensure null termination
+    s->data[s->len] = '\0';
+    
+    return AT_SUCCESS;
+}
+
+
+
+// ============================================================================================================================================
+// free
+// ============================================================================================================================================
 
 
 i32 ds_free(dyn_str* s) {
@@ -152,6 +194,10 @@ i32 ds_append_fmt(dyn_str* s, const char* fmt, ...) {
     return AT_SUCCESS;
 }
 
+// ============================================================================================================================================
+// append
+// ============================================================================================================================================
+
 
 i32 ds_remove_range(dyn_str* s, const size_t pos, const size_t len) {
 
@@ -181,7 +227,10 @@ i32 ds_insert_str(dyn_str* s, const size_t pos, const char* str) {
     return AT_SUCCESS;
 }   
 
-// ==================================== compare ====================================
+// ============================================================================================================================================
+// compare
+// ============================================================================================================================================
+
 
 i32 ds_compare(const dyn_str* s1, const dyn_str* s2) {
     VALIDATE(s1);
@@ -197,7 +246,10 @@ i32 ds_compare_cstr(const dyn_str* s1, const char* s2) {
     return strcmp(s1->data, s2);
 }
 
-// ==================================== search ====================================
+// ============================================================================================================================================
+// search
+// ============================================================================================================================================
+
 
 ssize_t ds_find_char(const dyn_str* s, char c, size_t start_pos) {
     VALIDATE(s);
@@ -239,7 +291,10 @@ ssize_t ds_find_last_str(const dyn_str* s, const char* substr) {
     return -1;
 }
 
-// ==================================== substring ====================================
+// ============================================================================================================================================
+// substring
+// ============================================================================================================================================
+
 
 i32 ds_substring(const dyn_str* s, size_t start, size_t len, dyn_str* result) {
     VALIDATE(s);
@@ -268,9 +323,10 @@ i32 ds_substring_from(const dyn_str* s, size_t start, dyn_str* result) {
     return ds_substring(s, start, len, result);
 }
 
+// ============================================================================================================================================
+// transformation
+// ============================================================================================================================================
 
-
-// ==================================== transformation ====================================
 
 i32 ds_to_lowercase(dyn_str* s) {
     VALIDATE(s);
@@ -305,7 +361,10 @@ i32 ds_reverse(dyn_str* s) {
     return AT_SUCCESS;
 }
 
-// ==================================== trim ====================================
+// ============================================================================================================================================
+// trim
+// ============================================================================================================================================
+
 
 i32 ds_trim(dyn_str* s) {
     VALIDATE(s);
@@ -356,7 +415,10 @@ i32 ds_trim_end(dyn_str* s) {
     return AT_SUCCESS;
 }
 
-// ==================================== replacement ====================================
+// ============================================================================================================================================
+// replacement
+// ============================================================================================================================================
+
 
 i32 ds_replace(dyn_str* s, const char* old_str, const char* new_str) {
     VALIDATE(s);
@@ -386,6 +448,50 @@ i32 ds_replace(dyn_str* s, const char* old_str, const char* new_str) {
     return AT_SUCCESS;
 }
 
+
+i32 ds_replace_range(dyn_str* s, const size_t start_pos, const size_t length, const char* new_str) {
+    VALIDATE(s);
+    if (!new_str) return AT_INVALID_ARGUMENT;
+    if (start_pos > s->len) return AT_RANGE_ERROR;
+
+    // Calculate actual length to remove (don't go beyond string end)
+    size_t remove_len = length;
+    if (start_pos + remove_len > s->len) {
+        remove_len = s->len - start_pos;
+    }
+
+    const size_t new_str_len = strlen(new_str);
+    const size_t new_total_len = s->len - remove_len + new_str_len;
+
+    // Ensure we have enough capacity
+    if (new_total_len + 1 > s->cap) {
+        size_t new_cap = s->cap;
+        while (new_cap < new_total_len + 1) {
+            new_cap *= 2;
+        }
+        char* new_data = realloc(s->data, new_cap);
+        if (!new_data) return AT_MEMORY_ERROR;
+        s->data = new_data;
+        s->cap = new_cap;
+    }
+
+    // Move the tail of the string if needed
+    if (remove_len != new_str_len) {
+        size_t tail_start = start_pos + remove_len;
+        size_t tail_length = s->len - tail_start;
+        memmove(s->data + start_pos + new_str_len, 
+                s->data + tail_start, 
+                tail_length + 1); // +1 to include null terminator
+    }
+
+    // Copy the new string into place
+    memcpy(s->data + start_pos, new_str, new_str_len);
+    s->len = new_total_len;
+
+    return AT_SUCCESS;
+}
+
+
 i32 ds_replace_char(dyn_str* s, char old_char, char new_char) {
     VALIDATE(s);
     
@@ -398,7 +504,10 @@ i32 ds_replace_char(dyn_str* s, char old_char, char new_char) {
     return AT_SUCCESS;
 }
 
-// ==================================== conversion ====================================
+// ============================================================================================================================================
+// conversion
+// ============================================================================================================================================
+
 
 i32 ds_to_int(const dyn_str* s, int* result) {
     VALIDATE(s);
@@ -433,7 +542,10 @@ i32 ds_to_double(const dyn_str* s, double* result) {
     return AT_SUCCESS;
 }
 
-// ==================================== util ====================================
+// ============================================================================================================================================
+// util
+// ============================================================================================================================================
+
 
 b8 ds_starts_with(const dyn_str* s, const char* prefix) {
     VALIDATE(s);

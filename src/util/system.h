@@ -55,7 +55,7 @@ int get_executable_path_buf(char *out, size_t outlen);
 // ------------------------------------------------------------------------------------------------------------------
 
 //
-static b8 system_ensure_file_exists(const char* file_path);
+b8 system_ensure_file_exists(const char* file_path);
 
 //
-static b8 system_ensure_directory_exists(const char *path);
+b8 system_ensure_directory_exists(const char *path);
