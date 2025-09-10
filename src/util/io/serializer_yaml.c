@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <string.h>
 #include <regex.h>
-#include <limits.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <fcntl.h>
@@ -123,7 +122,6 @@ typedef struct {
 b8 find_section_start_and_end_callback(const char* line, size_t len, void* user_data) {
 
     serializer_section_data* sec_data = (serializer_section_data*)user_data;
-    LOG(Trace, "line: %.*s\n", (int)len, line);
 
     if (!sec_data->start) {         // Find start first: currect section (name and indentation)
 
@@ -144,7 +142,7 @@ b8 find_section_start_and_end_callback(const char* line, size_t len, void* user_
         if (get_indentation(line) == (sec_data->serializer->current_indentation -1) && found) {
 
             sec_data->start = line + len;        // start pointer at next line (ignore header)
-            LOG(Debug, "found start")
+            // LOG(Debug, "found start")
         }
         
         return true;       // always return true because ds_iterate_lines still need to continue until end if found
@@ -153,7 +151,7 @@ b8 find_section_start_and_end_callback(const char* line, size_t len, void* user_
     // Find end of section
     if (get_indentation(line) < sec_data->serializer->current_indentation || line[len -1] == ":") {
         sec_data->end = line -1;
-        LOG(Debug, "found end")
+        // LOG(Debug, "found end")
         return false;
     }
 
@@ -303,25 +301,23 @@ void save_section(serializer_yaml* serializer) {
     const i32 result = ds_from_file(&file_content, serializer->fp);
     VALIDATE(!result, return, "", "Error reading file: %d", result)
 
-    LOG(Info, "file_content: \n%s\n", file_content.data)
-    LOG(Info, "section_content: \n%s\n", serializer->section_content.data)
+    // LOG(Info, "file_content: \n%s\n", file_content.data)
+    // LOG(Info, "section_content: \n%s\n", serializer->section_content.data)
 
     serializer_section_data sec_data = {0};
     sec_data.serializer = serializer;
     ds_iterate_lines(&file_content, find_section_start_and_end_callback, (void*)&sec_data);        // find section start & end in file content
     if (sec_data.start && !sec_data.end) {              // start found but not end -> assuming section is at end file
-        LOG(Trace, "start found, but NOT end")
+        // LOG(Trace, "start found, but NOT end")
         sec_data.end = file_content.data[file_content.len -1];
 
     } else if (!sec_data.start && !sec_data.end) {      // both not found -> section not in file yet
-        LOG(Trace, "both start & end NOT found")
+        // LOG(Trace, "both start & end NOT found")
         sec_data.start = file_content.data[file_content.len -1];
         sec_data.end = file_content.data[file_content.len -1];
-    } else if (sec_data.start && sec_data.end)
-        LOG(Trace, "both start & end FOUND")
-
-    // LOG(Info, "start:   %*s", strlen(sec_data.start), sec_data.start)
-    // LOG(Info, "end:     %*s", strlen(sec_data.end), sec_data.end)   
+    }
+    //  else if (sec_data.start && sec_data.end)
+    //     LOG(Trace, "both start & end FOUND")
 
     LOG(Warn, "before: %s", file_content)
     sec_data.file_content = &file_content;
@@ -329,8 +325,18 @@ void save_section(serializer_yaml* serializer) {
     LOG(Warn, "after: %s", file_content)
 
 
-    // TODO: save data to file
-
+    if (serializer->fp) {
+        fclose(serializer->fp);
+        serializer->fp = NULL;
+    }
+    serializer->fp = fopen(serializer->file_path, "w");         // Reopen the file in write mode to overwrite it
+    if (serializer->fp) {
+        fwrite(file_content.data, 1, file_content.len, serializer->fp);
+        fflush(serializer->fp); // Ensure all data is written
+        LOG(Info, "Successfully saved updated content to file");
+    } else {
+        LOG(Error, "Failed to open file for writing: %s", serializer->file_path);
+    }
 
     ds_free(&file_content);
     LOG(Debug, "Saved section")
@@ -516,6 +522,7 @@ b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const
     serializer->fp = fopen(loc_file_path, "a+");                                                                 // Open file for reading (saving will happen later in shutdown)
     VALIDATE(serializer->fp, return false, "opened file [%s]", "Failed to open file [%s]", loc_file_path);
 
+    memcpy(serializer->file_path, loc_file_path, sizeof(loc_file_path));
     serializer->option = option;                                                                                // Store serializer settings
 
     strncpy(serializer->current_section_name, section_name, sizeof(serializer->current_section_name) - 1);      // Copy section name safely
