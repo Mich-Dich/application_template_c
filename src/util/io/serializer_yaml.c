@@ -15,6 +15,28 @@
 
 
 
+/*
+
+file buffer for dev:
+
+test_section_00:
+  random_00: dfkjvhbuswzvbauzvbaufbvaf
+  random_01: skjdfhbvzsuzt fsdh bfvhflk
+test_section_00:
+  random_00: dfkjvhbuswzvbauzvbaufbvaf
+  random_01: skjdfhbvzsuzt fsdh bfvhflk
+
+
+main_section:
+test_i32: 4294919028
+test_f32: 0.000000
+test_bool: 4294919032
+test_long_long: nan
+test_str: Since C doesn't support switching on strings directly, we need to use a different approach.
+
+*/
+
+
 // ============================================================================================================================================
 // helper functions
 // ============================================================================================================================================
@@ -22,7 +44,7 @@
 #define STR_LINE_LEN    32000               // !!! longest possible length for a line in YAML file !!!
 
 // write indentation
-static void write_indentation(FILE* fp, u32 indentation) {
+[[maybe_unused]] static void write_indentation(FILE* fp, u32 indentation) {
     for (u32 x = 0; x < indentation; x++)
         fputs("  ", fp);
 }
@@ -149,7 +171,7 @@ b8 find_section_start_and_end_callback(const char* line, size_t len, void* user_
     } 
 
     // Find end of section
-    if (get_indentation(line) < sec_data->serializer->current_indentation || line[len -1] == ":") {
+    if (get_indentation(line) < sec_data->serializer->current_indentation || line[len -1] == ':') {
         sec_data->end = line -1;
         // LOG(Debug, "found end")
         return false;
@@ -207,9 +229,9 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
 #else
 
 b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
+    
     serializer_section_data* sec_data = (serializer_section_data*)user_data;
-
-    const char* unindented_line = skip_indentation(line);
+    // const char* unindented_line = skip_indentation(line);
     // LOG(Debug, "line: [%.*s]", (int)len, line)
     
     // Get key
@@ -244,12 +266,30 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
         current_pos = found + key_len;
     }
 
-    if (key_location_in_file == -1) {
-        // Key not found, append to end of section
+    if (key_location_in_file == -1) {       // Key not found, append to end of section
+        
+        // Calculate indentation - if current_indentation is 0 (top-level), use 1 for entries
+        const int indent_level = (sec_data->serializer->current_indentation > 0) ? sec_data->serializer->current_indentation : 1;
+        const int indent_spaces = indent_level * 2;
+        char indent_str[64] = {0};
+        if (indent_spaces > 0 && indent_spaces < (int)sizeof(indent_str))
+            memset(indent_str, ' ', indent_spaces);
+        
         char new_line[PATH_MAX];
-        snprintf(new_line, sizeof(new_line), "%.*s\n", (int)len, line);
-        ds_insert_str(sec_data->file_content, end_position, new_line);
-        sec_data->end += strlen(new_line);
+        snprintf(new_line, sizeof(new_line), "\n%s%.*s", indent_str, (int)len, line);
+        
+        size_t end_pos = sec_data->end - sec_data->file_content->data;
+        if (end_pos > sec_data->file_content->len)
+            end_pos = sec_data->file_content->len;
+        
+        // LOG(Trace, "trying to insert new line [%s] at %zu", new_line, end_pos);
+        const i32 result = ds_insert_str(sec_data->file_content, end_pos, new_line);
+        if (result != AT_SUCCESS) {
+            LOG(Error, "Failed to insert new line [%s] because [%d]", new_line, result);
+            return true;
+        }
+        
+        sec_data->end = sec_data->file_content->data + end_pos + strlen(new_line);
         return true;
     }
 
@@ -309,12 +349,22 @@ void save_section(serializer_yaml* serializer) {
     ds_iterate_lines(&file_content, find_section_start_and_end_callback, (void*)&sec_data);        // find section start & end in file content
     if (sec_data.start && !sec_data.end) {              // start found but not end -> assuming section is at end file
         // LOG(Trace, "start found, but NOT end")
-        sec_data.end = file_content.data[file_content.len -1];
+        sec_data.end = &file_content.data[file_content.len];
 
     } else if (!sec_data.start && !sec_data.end) {      // both not found -> section not in file yet
-        // LOG(Trace, "both start & end NOT found")
-        sec_data.start = file_content.data[file_content.len -1];
-        sec_data.end = file_content.data[file_content.len -1];
+
+        LOG(Trace, "both start & end NOT found")
+
+        const int indent_spaces = (serializer->current_indentation - 1) * 2;        // Calculate the number of spaces needed for indentation
+
+        char indent_str[64] = {0};                                                  // Create a string of spaces for indentation
+        if (indent_spaces > 0 && indent_spaces < (int)sizeof(indent_str))
+            memset(indent_str, ' ', indent_spaces);
+        
+        ds_append_fmt(&file_content, "\n%s%s:", indent_str, serializer->current_section_name);    // Add the section header with proper indentation
+        
+        sec_data.start = &file_content.data[file_content.len];
+        sec_data.end = &file_content.data[file_content.len];
     }
     //  else if (sec_data.start && sec_data.end)
     //     LOG(Trace, "both start & end FOUND")
@@ -324,19 +374,11 @@ void save_section(serializer_yaml* serializer) {
     ds_iterate_lines(&serializer->section_content, add_or_update_entry, (void*)&sec_data);
     LOG(Warn, "after: %s", file_content)
 
-
-    if (serializer->fp) {
-        fclose(serializer->fp);
-        serializer->fp = NULL;
-    }
-    serializer->fp = fopen(serializer->file_path, "w");         // Reopen the file in write mode to overwrite it
-    if (serializer->fp) {
-        fwrite(file_content.data, 1, file_content.len, serializer->fp);
-        fflush(serializer->fp); // Ensure all data is written
-        LOG(Info, "Successfully saved updated content to file");
-    } else {
-        LOG(Error, "Failed to open file for writing: %s", serializer->file_path);
-    }
+    // Save data to file
+    rewind(serializer->fp); // Go to beginning of file
+    ftruncate(fileno(serializer->fp), 0); // Truncate the file to 0 length
+    fwrite(file_content.data, 1, file_content.len, serializer->fp);
+    fflush(serializer->fp); // Ensure all data is written
 
     ds_free(&file_content);
     LOG(Debug, "Saved section")
@@ -522,7 +564,10 @@ b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const
     serializer->fp = fopen(loc_file_path, "a+");                                                                 // Open file for reading (saving will happen later in shutdown)
     VALIDATE(serializer->fp, return false, "opened file [%s]", "Failed to open file [%s]", loc_file_path);
 
-    memcpy(serializer->file_path, loc_file_path, sizeof(loc_file_path));
+
+    // memset(serializer->file_path, 0, sizeof(serializer->file_path));
+    // strncpy(serializer->file_path, loc_file_path, sizeof(serializer->file_path) - 1);
+    // serializer->file_path[sizeof(serializer->file_path) - 1] = '\0';
     serializer->option = option;                                                                                // Store serializer settings
 
     strncpy(serializer->current_section_name, section_name, sizeof(serializer->current_section_name) - 1);      // Copy section name safely

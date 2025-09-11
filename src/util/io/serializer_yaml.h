@@ -24,7 +24,6 @@ typedef struct {
     char                current_section_name[STR_SEC_LEN];
     char                previous_section_name[STR_SEC_LEN];
     dyn_str             section_content;
-    char                file_path[PATH_MAX];
 
 } serializer_yaml;
 
