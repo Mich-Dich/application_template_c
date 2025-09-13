@@ -37,3 +37,27 @@ const char* util_extract_variable_name(const char* name) {
         return last_delimiter + 1; // Skip "."
 }
 
+
+const char* str_search_range(const char* haystack, const char* needle, size_t range_len) {
+
+    if (!haystack || !needle) return NULL;
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0) return haystack;       // needle empty -> found at start (like strstr)
+    if (range_len == 0) return NULL;
+
+    // Find actual haystack length limited by range_len (don't read past range_len)
+    size_t hay_len = 0;
+    while (hay_len < range_len && haystack[hay_len] != '\0')
+        hay_len++;
+
+    if (needle_len > hay_len) return NULL;                                  // If needle is longer than the searchable region, no match possible
+
+    // Search: for each possible start i, compare needle_len bytes
+    size_t last_start = hay_len - needle_len;                               // safe because needle_len <= hay_len
+    for (size_t i = 0; i <= last_start; ++i)
+        if (memcmp(haystack + i, needle, needle_len) == 0)
+            return haystack + i;
+
+    return NULL;
+}
+

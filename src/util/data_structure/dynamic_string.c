@@ -155,7 +155,7 @@ i32 ds_append_char(dyn_str* s, const char c) {
 }
 
 
-i32 ds_append_fmt(dyn_str* s, const char* fmt, ...) {
+i32 ds_append_fmt(dyn_str* s, i32* needed_space, const char* fmt, ...) {
 
     VALIDATE(s);
     if (!fmt) return AT_INVALID_ARGUMENT;
@@ -436,7 +436,7 @@ i32 ds_replace(dyn_str* s, const char* old_str, const char* new_str) {
     ssize_t found_pos;
     
     while ((found_pos = ds_find_str(s, old_str, pos)) != -1) {
-        ds_append_fmt(&result, "%.*s", (i32)(found_pos - pos), s->data + pos);      // Append the part before the match
+        ds_append_fmt(&result, NULL, "%.*s", (i32)(found_pos - pos), s->data + pos);      // Append the part before the match
         ds_append_str(&result, new_str);            // Append the replacement
         pos = found_pos + old_len;                  // Move position after the match
     }

@@ -169,9 +169,9 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
     ds_init(&crash_msg);
 
     ds_append_str(&crash_msg, "\n=================== CRASH DETECTED ===================\n");
-    ds_append_fmt(&crash_msg, "Signal: %s (%d)\n", sig_name, sig);
-    ds_append_fmt(&crash_msg, "Fault address: %p\n", info->si_addr);
-    ds_append_fmt(&crash_msg, "Fault instruction: %p\n", caller_address);
+    ds_append_fmt(&crash_msg, NULL, "Signal: %s (%d)\n", sig_name, sig);
+    ds_append_fmt(&crash_msg, NULL, "Fault address: %p\n", info->si_addr);
+    ds_append_fmt(&crash_msg, NULL, "Fault instruction: %p\n", caller_address);
 
     // Get backtrace
     void* buffer[MAX_STACK_FRAMES];
@@ -181,7 +181,7 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
     if (caller_address)
         buffer[1] = caller_address;
     
-    ds_append_fmt(&crash_msg, "-------------- Stack trace (%d frames) --------------\n", frames);
+    ds_append_fmt(&crash_msg, NULL, "-------------- Stack trace (%d frames) --------------\n", frames);
     
     for (int i = 1; i < frames; i++) {
         void* addr = buffer[i];
@@ -205,12 +205,12 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
         resolve_address(addr, exe_path, &source_file, &source_line);
         
         // Print frame information
-        ds_append_fmt(&crash_msg, "#%-2d %p", i, addr);
-        ds_append_fmt(&crash_msg, " in [%s]", file_name);
-        ds_append_fmt(&crash_msg, " name [%s]", demangled_name ? demangled_name : "null");
-        ds_append_fmt(&crash_msg, " symbol [%s]", symbol_name ? symbol_name : "null");
-        ds_append_fmt(&crash_msg, " offset [0x%lx]", offset);
-        ds_append_fmt(&crash_msg, " file:line [%s:%d]\n", source_file ? source_file : "null", source_line);
+        ds_append_fmt(&crash_msg, NULL, "#%-2d %p", i, addr);
+        ds_append_fmt(&crash_msg, NULL, " in [%s]", file_name);
+        ds_append_fmt(&crash_msg, NULL, " name [%s]", demangled_name ? demangled_name : "null");
+        ds_append_fmt(&crash_msg, NULL, " symbol [%s]", symbol_name ? symbol_name : "null");
+        ds_append_fmt(&crash_msg, NULL, " offset [0x%lx]", offset);
+        ds_append_fmt(&crash_msg, NULL, " file:line [%s:%d]\n", source_file ? source_file : "null", source_line);
 
         if (demangled_name)
             free(demangled_name);

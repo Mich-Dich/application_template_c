@@ -473,7 +473,7 @@ b8 logger_shutdown() {
     ds_init(&out);
 
     ds_append_str(&out, "-----------------------------------------------------------------------------------------------------\n");
-    ds_append_fmt(&out, "Closing Log at [%04d/%02d/%02d %02d:%02d:%02d]\n", st.year, st.month, st.day, st.hour, st.minute, st.second);
+    ds_append_fmt(&out, NULL, "Closing Log at [%04d/%02d/%02d %02d:%02d:%02d]\n", st.year, st.month, st.day, st.hour, st.minute, st.second);
     ds_append_str(&out, "=====================================================================================================\n");
 
     // mutex management not needed as the only other thread working on the same buffer joint just befor
@@ -533,8 +533,8 @@ void logger_set_format(const char* new_format) {
                 if (i + 1 >= fmt_len) break;
                 char cmd = fmt[++i];
                 switch (cmd) {
-                    case 'B': ds_append_str(&out, c_console_color_table[(int)message->type]); break;                      // color begin
-                    case 'E': ds_append_str(&out, c_console_rest); break;                                                 // color end
+                    case 'B': ds_append_str(&out, c_console_color_table[(int)message->type]); break;                    // color begin
+                    case 'E': ds_append_str(&out, c_console_rest); break;                                               // color end
                     case 'C': ds_append_str(&out, message->message); break;                                             // message content
                     case 'L': ds_append_str(&out, log_level_to_string(message->type)); break;                           // severity
                     case 'Z': ds_append_char(&out, '\n'); break;                                                        // newline
@@ -546,18 +546,18 @@ void logger_set_format(const char* new_format) {
                     case 'F': ds_append_str(&out, message->function_name); break;                                       // function
                     case 'A': ds_append_str(&out, message->file_name); break;                                           // file
                     case 'I': ds_append_str(&out, short_filename(message->file_name)); break;                           // short file
-                    case 'G': ds_append_fmt(&out, "%d", message->line); break;                                          // line
+                    case 'G': ds_append_fmt(&out, NULL, "%d", message->line); break;                                    // line
                     
-                    case 'T': ds_append_fmt(&out, "%02d:%02d:%02d", st.hour, st.minute, st.second); break;              // time component
-                    case 'H': ds_append_fmt(&out, "%02d", st.hour); break;                                              // time component
-                    case 'M': ds_append_fmt(&out, "%02d", st.minute); break;                                            // time component
-                    case 'S': ds_append_fmt(&out, "%02d", st.second); break;                                            // time component
-                    case 'J': ds_append_fmt(&out, "%03d", st.millisec); break;                                          // time component
+                    case 'T': ds_append_fmt(&out, NULL, "%02d:%02d:%02d", st.hour, st.minute, st.second); break;        // time component
+                    case 'H': ds_append_fmt(&out, NULL, "%02d", st.hour); break;                                        // time component
+                    case 'M': ds_append_fmt(&out, NULL, "%02d", st.minute); break;                                      // time component
+                    case 'S': ds_append_fmt(&out, NULL, "%02d", st.second); break;                                      // time component
+                    case 'J': ds_append_fmt(&out, NULL, "%03d", st.millisec); break;                                    // time component
 
-                    case 'N': ds_append_fmt(&out, "%04d/%02d/%02d", st.year, st.month, st.day); break;                  // date component
-                    case 'Y': ds_append_fmt(&out, "%04d", st.year); break;                                              // date component
-                    case 'O': ds_append_fmt(&out, "%02d", st.month); break;                                             // date component
-                    case 'D': ds_append_fmt(&out, "%02d", st.day); break;                                               // date component
+                    case 'N': ds_append_fmt(&out, NULL, "%04d/%02d/%02d", st.year, st.month, st.day); break;            // date component
+                    case 'Y': ds_append_fmt(&out, NULL, "%04d", st.year); break;                                        // date component
+                    case 'O': ds_append_fmt(&out, NULL, "%02d", st.month); break;                                       // date component
+                    case 'D': ds_append_fmt(&out, NULL, "%02d", st.day); break;                                         // date component
 
                     default:                                                                                            // unknown %% - treat literally (append '$' and the char)
                         ds_append_char(&out, '$');

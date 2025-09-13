@@ -67,6 +67,23 @@ u32 get_indentation(const char *line) {
 }
 
 
+// will get a char array like his: [char line[STR_LINE_LEN]]
+u32 get_indentation_reverse(const char *line) {
+
+    if (!line) return 0;
+    i32 count = -1;
+    i32 pointer = -1;
+    
+    while ((line[pointer] == ' ' && line[pointer -1] == ' ') || line[count] == '\t') {
+
+        pointer -= (line[count] == '\t') ? 1 : 2 ;          // shift pointer by 2 if spaces
+        count--;
+    }
+
+    return -(count +1);
+}
+
+
 //
 const char* skip_indentation(const char* line) {
     
@@ -85,30 +102,41 @@ const char* skip_indentation(const char* line) {
 // ============================================================================================================================================
 
 // get all lines that match the section and indentation and save them in [serializer->section_content]
-// lines inside [serializer->section_content] are be "\n" terminated
+// lines inside [serializer->section_content] are "\n" terminated
 b8 get_content_of_section(serializer_yaml* serializer) {
 
     // reset string
     ds_free(&serializer->section_content);
     ds_init(&serializer->section_content);
-
-    char line[STR_LINE_LEN] = {0};
-    char section_name[STR_LINE_LEN] = {0};
-    snprintf(section_name, sizeof(section_name), "%s:", serializer->current_section_name);
-    b8 found_section = false;
     rewind(serializer->fp);
 
-    // Find currect section (name and indentation)
-    while (fgets(line, sizeof(line), serializer->fp)) {
-        if (!strstr(line, section_name) || get_indentation(line) != serializer->current_indentation)
-            continue;
+    // search for header while respecting the hierarchy in [serializer->section_headers]
+    char line[STR_LINE_LEN] = {0};
+    b8 found_section = true;                                // if hierarchy is not violated this will remain true
+    const size_t number_of_headers = stack_size(&serializer->section_headers);
+    // LOG(Trace, "number_of_headers %zu", number_of_headers)
+    for (size_t x = 0; x < number_of_headers; x++) {
+        
+        char current_header[STR_SEC_LEN] = {0};
+        stack_peek_at(&serializer->section_headers, x, &current_header);
+        // LOG(Trace, "searching for [%s]", current_header)
 
-        found_section = true;
-        break;                   // exit search loop -> found header
+        while (fgets(line, sizeof(line), serializer->fp)) {
+
+            // LOG(Trace, "current line [%s]", line)
+            const u32 indent = get_indentation(line);
+            if (indent < x) {                               // left header hierarchy
+                found_section = false;                      // hierarchy violated -> still needs to search for subsections
+                goto break_search;
+            }
+
+            //  current header                  correct indentation (going deeper in)
+            if (strstr(line, current_header) && indent == x)
+                break;      // exit search loop -> found header        continue FOR to search for next header
+        }
     }
+    break_search:
     VALIDATE(found_section, return false, "", "could not find section ")
-
-    serializer->current_indentation++;      // found section header -> entrys are indented 1 more
 
     // Prepare regex to match key-value lines
     static const char *pattern = "^[ \t]*[A-Za-z0-9_-]+:[ \t]*[^ \t\n]+.*$";
@@ -128,7 +156,9 @@ b8 get_content_of_section(serializer_yaml* serializer) {
     }
     regfree(&regex); // Don't forget to free the regex
 
-    LOG(Info, "serializer->section_content: \n%s", serializer->section_content.data)
+    char current_header[STR_SEC_LEN] = {0};
+    stack_peek(&serializer->section_headers, &current_header);
+    // LOG(Info, "current_header [%s] serializer->section_content: \n%s", current_header, serializer->section_content.data)
 
     return true;
 }
@@ -139,94 +169,49 @@ typedef struct {
     const char*         start;
     const char*         end;
     dyn_str*            file_content;
+    size_t              headers_index;
+    b8                  found_last_section;
 } serializer_section_data;
+
 
 b8 find_section_start_and_end_callback(const char* line, size_t len, void* user_data) {
 
     serializer_section_data* sec_data = (serializer_section_data*)user_data;
 
-    if (!sec_data->start) {         // Find start first: currect section (name and indentation)
+    char current_header[STR_SEC_LEN] = {0};
+    stack_peek_at(&sec_data->serializer->section_headers, sec_data->headers_index, &current_header);
+    // LOG(Trace, "searching for [%s] of [%s] in [%zu][%.*s]", (sec_data->found_last_section) ? "END" : "START", current_header, len, len, line)
 
-        const char*     needle = sec_data->serializer->current_section_name;
-        size_t          needle_len = strlen(needle);
-        b8              found = false;
-        if (needle_len <= len) {
-            for (size_t x = 0; x < len - needle_len; x++) {
-                if (memcmp(line + x, needle, needle_len) == 0) {
+    const u32 indent = get_indentation(line);
+    const b8 last_section = (stack_size(&sec_data->serializer->section_headers) -1) == sec_data->headers_index;
+    if (!sec_data->found_last_section) {                // Find start first: currect section (name and indentation)
 
-                    found = true;
-                    break;
-                }
-            }
+        if (indent < sec_data->headers_index) {         // exited header hierarchy
+            return false;                               // hierarchy violated -> still needs to search for subsections
         }
 
-        //  check indentation (remove 1 for header)                                    correct title
-        if (get_indentation(line) == (sec_data->serializer->current_indentation -1) && found) {
-
-            sec_data->start = line + len;        // start pointer at next line (ignore header)
-            // LOG(Debug, "found start")
+        //  check indentation (remove 1 for header)                     correct title
+        if (indent == (sec_data->headers_index) && str_search_range(line, current_header, len)) {
+            sec_data->start = line + len;               // update start pointer to ref last found section title ()
+            
+            if (last_section)
+                sec_data->found_last_section = true;    // found las header start -> should start searching for the end
+            else
+                sec_data->headers_index++;              // move on to next header
         }
         
-        return true;       // always return true because ds_iterate_lines still need to continue until end if found
+        return true;                                    // always return true because ds_iterate_lines still need to continue until end if found
     } 
 
     // Find end of section
-    if (get_indentation(line) < sec_data->serializer->current_indentation || line[len -1] == ':') {
+    if (indent < sec_data->serializer->current_indentation || (line[len -1] == ':' && indent == (sec_data->serializer->current_indentation -1))) {
         sec_data->end = line -1;
-        // LOG(Debug, "found end")
         return false;
     }
 
     return true;
 }
 
-#if 0
-
-b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
-
-    serializer_section_data* sec_data = (serializer_section_data*)user_data;
-
-    const char* unindented_line = skip_indentation(line);
-    LOG(Debug, "line: [%*s]", len, line)
-    
-    // get key
-    char key_str[PATH_MAX] = {0};
-    for (size_t x = 0; x < len; x++) {
-        if (line[x] == ':')
-            break;
-
-        key_str[x] = line[x];
-    }
-    LOG(Trace, "key_str: %s", key_str)
-
-    // search for key in sec_data->file_content  between:  sec_data.start and sec_data.end
-    const size_t end_position = (sec_data->end - sec_data->file_content->data);
-    const ssize_t key_location_in_file = ds_find_str(&sec_data->file_content, &key_str, line);
-    if (key_location_in_file == -1 || key_location_in_file >= end_position) {          // key not in current section, append to end
-        
-        memset(key_str, 0, sizeof(key_str));        // can reuse key_str as it's not needed anymore
-        memcpy(&key_str, line, len);
-        ds_insert_str(sec_data->file_content, end_position, key_str);                       // copy <line> to sec_data->file_content after sec_data.end
-        sec_data->end += len;                                                           // move sec_data.end to new end
-        return true;
-    }
-
-    // key_location_in_file is found and needs to be updated
-    const size_t key_len = strlen(key_str);
-    char value_str[PATH_MAX] = {0};
-    for (size_t x = key_len +2; x < len; x++)          // start after key_str (skip ":" as well)
-        value_str[x - key_len -2] = line[x];
-    LOG(Trace, "value_str: %s", value_str)
-      
-    const size_t value_start_pos = key_location_in_file + key_len +2;
-    const result = ds_replace_range(sec_data->file_content, value_start_pos, len - key_len -2, value_str);
-    VALIDATE(!result, , "", "ds_replace_range result: %s", strerrno(result))
-
-    LOG(Debug, "line: [%s]", sec_data->file_content->data)
-    return true;
-}
-
-#else
 
 b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
     
@@ -238,39 +223,24 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
     char key_str[PATH_MAX] = {0};
     size_t key_len = 0;
     for (size_t x = 0; x < len; x++) {
-        if (line[x] == ':')
+        if (line[x] == ':') {
+            
+            key_str[x] = line[x];
             break;
+        }
+
         key_str[x] = line[x];
         key_len++;
     }
     // LOG(Trace, "key_str: %s", key_str)
 
-    // Search for key in the section range
-    const size_t end_position = (sec_data->end - sec_data->file_content->data);
-    ssize_t key_location_in_file = -1;
-    
-    // Search only within the section bounds
-    const char* section_start = sec_data->file_content->data + (sec_data->start - sec_data->file_content->data);
-    const char* section_end = sec_data->end;
-    
-    char* current_pos = (char*)section_start;
-    while (current_pos < section_end) {
-        char* found = strstr(current_pos, key_str);
-        if (!found || found >= section_end) break;
-        
-        // Check if this is a complete key (followed by colon)
-        if (found[key_len] == ':') {
-            key_location_in_file = found - sec_data->file_content->data;
-            break;
-        }
-        current_pos = found + key_len;
-    }
+    const size_t end_position = (sec_data->end - sec_data->file_content->data);                                         // Search for key in the section range
+    const char* section_start = sec_data->file_content->data + (sec_data->start - sec_data->file_content->data);        // Search only within the section bounds
+    const char* key_location_in_file = str_search_range(section_start, key_str, (sec_data->end - sec_data->file_content->data));
+    const u32 key_indent = get_indentation_reverse(key_location_in_file);
+    if (!key_location_in_file || key_indent != sec_data->serializer->current_indentation) {       // Key not found, append to end of section
 
-    if (key_location_in_file == -1) {       // Key not found, append to end of section
-        
-        // Calculate indentation - if current_indentation is 0 (top-level), use 1 for entries
-        const int indent_level = (sec_data->serializer->current_indentation > 0) ? sec_data->serializer->current_indentation : 1;
-        const int indent_spaces = indent_level * 2;
+        const int indent_spaces = (sec_data->serializer->current_indentation) * 2;
         char indent_str[64] = {0};
         if (indent_spaces > 0 && indent_spaces < (int)sizeof(indent_str))
             memset(indent_str, ' ', indent_spaces);
@@ -278,38 +248,25 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
         char new_line[PATH_MAX];
         snprintf(new_line, sizeof(new_line), "\n%s%.*s", indent_str, (int)len, line);
         
-        size_t end_pos = sec_data->end - sec_data->file_content->data;
-        if (end_pos > sec_data->file_content->len)
+        size_t end_pos = sec_data->end - sec_data->file_content->data;      // Calculate the correct insertion position (need to add 1 for \n)
+        if (end_pos > sec_data->file_content->len)                          // Make sure we're not inserting beyond the string length
             end_pos = sec_data->file_content->len;
         
-        // LOG(Trace, "trying to insert new line [%s] at %zu", new_line, end_pos);
+        LOG(Trace, "trying to insert new line [%s] at %zu", new_line, end_pos);
         const i32 result = ds_insert_str(sec_data->file_content, end_pos, new_line);
         if (result != AT_SUCCESS) {
             LOG(Error, "Failed to insert new line [%s] because [%d]", new_line, result);
             return true;
         }
         
-        sec_data->end = sec_data->file_content->data + end_pos + strlen(new_line);
+        sec_data->end = sec_data->file_content->data + end_pos + strlen(new_line);      // Update end pointer to account for the new content
         return true;
     }
 
     // Key found, update the value
-    const char* value_start = strchr(line, ':');
-    if (!value_start) return true;
-    value_start++; // Skip colon
-    
-    // Skip whitespace after colon
-    while (*value_start == ' ' || *value_start == '\t') {
-        value_start++;
-        len--;
-    }
-    
-    size_t value_len = len - (value_start - line) +1;
-    char value_str[PATH_MAX] = {0};
-    strncpy(value_str, value_start, value_len);
-    
+
     // Find the value position in the file
-    char* file_value_start = strchr(sec_data->file_content->data + key_location_in_file, ':');
+    char* file_value_start = strchr(key_location_in_file, ':');
     if (!file_value_start) return true;
     file_value_start++; // Skip colon
     
@@ -323,6 +280,19 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
     
     size_t file_value_pos = file_value_start - sec_data->file_content->data;
     size_t file_value_len = file_value_end - file_value_start;
+
+    
+
+    const char* value_start = strchr(line, ':');
+    if (!value_start) return true;
+    value_start++;                                                      // Skip colon
+    while (*value_start == ' ' || *value_start == '\t') {               // Skip whitespace after colon
+        value_start++;
+        len--;
+    }
+    size_t value_len = len - (value_start - line) +1;
+    char value_str[PATH_MAX] = {0};
+    strncpy(value_str, value_start, value_len);
     
     i32 result = ds_replace_range(sec_data->file_content, file_value_pos, file_value_len, value_str);
     if (result != AT_SUCCESS)
@@ -330,8 +300,6 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
 
     return true;
 }
-
-#endif
 
 
 void save_section(serializer_yaml* serializer) {
@@ -346,33 +314,41 @@ void save_section(serializer_yaml* serializer) {
 
     serializer_section_data sec_data = {0};
     sec_data.serializer = serializer;
-    ds_iterate_lines(&file_content, find_section_start_and_end_callback, (void*)&sec_data);        // find section start & end in file content
-    if (sec_data.start && !sec_data.end) {              // start found but not end -> assuming section is at end file
+    ds_iterate_lines(&file_content, find_section_start_and_end_callback, (void*)&sec_data);                 // find section start & end in file content
+
+    if (!sec_data.found_last_section) {
+
+        if (!sec_data.end)                                          
+            sec_data.end = &file_content.data[file_content.len];
+        
+        for (size_t x = sec_data.headers_index; x < stack_size(&serializer->section_headers); x++) {        // add remaining header to file
+            
+            char current_header[STR_SEC_LEN] = {0};
+            stack_peek_at(&serializer->section_headers, x, &current_header);
+            
+            const int indent_spaces = (x) * 2;                                                              // Calculate the number of spaces needed for indentation
+            char indent_str[64] = {0};                                                                      // Create a string of spaces for indentation
+            if (indent_spaces > 0 && indent_spaces < (int)sizeof(indent_str))
+                memset(indent_str, ' ', indent_spaces);
+            
+            char header_str[STR_SEC_LEN *2] = {0};
+            snprintf(header_str, sizeof(header_str), "\n%s%s:", indent_str, current_header);
+            ds_insert_str(&file_content, sec_data.end - file_content.data, header_str);                   // Add the section header with proper indentation
+            sec_data.start = sec_data.end + strlen(header_str);
+            sec_data.end = sec_data.start;
+        }
+        sec_data.end = sec_data.start;
+    }
+
+    else if (!sec_data.end) {              // start found but not end -> assuming section is at end file    ([start] is always found if [found_last_section] id true)
         // LOG(Trace, "start found, but NOT end")
         sec_data.end = &file_content.data[file_content.len];
-
-    } else if (!sec_data.start && !sec_data.end) {      // both not found -> section not in file yet
-
-        LOG(Trace, "both start & end NOT found")
-
-        const int indent_spaces = (serializer->current_indentation - 1) * 2;        // Calculate the number of spaces needed for indentation
-
-        char indent_str[64] = {0};                                                  // Create a string of spaces for indentation
-        if (indent_spaces > 0 && indent_spaces < (int)sizeof(indent_str))
-            memset(indent_str, ' ', indent_spaces);
-        
-        ds_append_fmt(&file_content, "\n%s%s:", indent_str, serializer->current_section_name);    // Add the section header with proper indentation
-        
-        sec_data.start = &file_content.data[file_content.len];
-        sec_data.end = &file_content.data[file_content.len];
     }
-    //  else if (sec_data.start && sec_data.end)
-    //     LOG(Trace, "both start & end FOUND")
 
-    LOG(Warn, "before: %s", file_content)
+    // LOG(Warn, "before: %s", file_content)
     sec_data.file_content = &file_content;
     ds_iterate_lines(&serializer->section_content, add_or_update_entry, (void*)&sec_data);
-    LOG(Warn, "after: %s", file_content)
+    // LOG(Warn, "after: %s", file_content)
 
     // Save data to file
     rewind(serializer->fp); // Go to beginning of file
@@ -381,7 +357,7 @@ void save_section(serializer_yaml* serializer) {
     fflush(serializer->fp); // Ensure all data is written
 
     ds_free(&file_content);
-    LOG(Debug, "Saved section")
+    // LOG(Debug, "Saved section")
 }
 
 // ============================================================================================================================================
@@ -564,14 +540,12 @@ b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const
     serializer->fp = fopen(loc_file_path, "a+");                                                                 // Open file for reading (saving will happen later in shutdown)
     VALIDATE(serializer->fp, return false, "opened file [%s]", "Failed to open file [%s]", loc_file_path);
 
-
-    // memset(serializer->file_path, 0, sizeof(serializer->file_path));
-    // strncpy(serializer->file_path, loc_file_path, sizeof(serializer->file_path) - 1);
-    // serializer->file_path[sizeof(serializer->file_path) - 1] = '\0';
+    serializer->current_indentation = 1;                                                                        // default to 1
     serializer->option = option;                                                                                // Store serializer settings
-
-    strncpy(serializer->current_section_name, section_name, sizeof(serializer->current_section_name) - 1);      // Copy section name safely
-    serializer->current_section_name[sizeof(serializer->current_section_name) - 1] = '\0';
+    stack_init(&serializer->section_headers, sizeof(char) * STR_SEC_LEN, 2);                                    // headers are char arrays with cap: STR_SEC_LEN
+    i32 result = stack_push(&serializer->section_headers, section_name);
+    if (result)
+        LOG(Error, "result: %s", strerror(result));
 
     ds_init(&serializer->section_content);                                                                      // Initialize dynamic string buffer and parse initial section
     get_content_of_section(serializer);
@@ -582,18 +556,15 @@ b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const
 
 void yaml_serializer_shutdown(serializer_yaml* serializer) {
 
-    // LOG(Info, "serializer->section_content: \n%s", serializer->section_content.data)
-    
-    // TODO: need to save this at the right location in the file and remember to save the section_header as well
-    if (serializer->option == SERIALIZER_OPTION_SAVE)           // dump content to file
+    if (serializer->option == SERIALIZER_OPTION_SAVE)       // dump content to file
         save_section(serializer);
 
-    // close file
-    if (serializer->fp) {
+    if (serializer->fp) {                                   // close file
         fclose(serializer->fp);
         serializer->fp = NULL;
     }
     ds_free(&serializer->section_content);
+    stack_free(&serializer->section_headers);
 }
 
 
@@ -604,34 +575,25 @@ void yaml_serializer_shutdown(serializer_yaml* serializer) {
 void yaml_serializer_subsection_begin(serializer_yaml* serializer, const char* name) {
 
     ASSERT(strlen(name) < STR_SEC_LEN, "", "Provided section name is to long [%s] may size [%u]", name, STR_SEC_LEN)
-    memcpy(serializer->previous_section_name, serializer->current_section_name, sizeof(serializer->previous_section_name));
-    memset(serializer->current_section_name, '\0', sizeof(serializer->current_section_name));
-    strncpy(serializer->current_section_name, name, strlen(name));
 
-    if (serializer->option == SERIALIZER_OPTION_SAVE) {
-        // TODO: need to save content in [serializer->section_content] to the correct location
-        // !!! can be in the middle of the file !!!
-    }
+    if (serializer->option == SERIALIZER_OPTION_SAVE)           // dump content to file
+        save_section(serializer);
 
-    get_content_of_section(serializer);                         // get content of new section
+    stack_push(&serializer->section_headers, name);
+    serializer->current_indentation++;
+    get_content_of_section(serializer);
 }
 
 
 void yaml_serializer_subsection_end(serializer_yaml* serializer) {
+    
+    if (serializer->option == SERIALIZER_OPTION_SAVE)           // dump content to file
+        save_section(serializer);
 
-    // switch name back to previous
-    char buffer[STR_SEC_LEN];
-    memcpy(buffer, serializer->current_section_name, sizeof(buffer));
-    memcpy(serializer->current_section_name, serializer->previous_section_name, sizeof(buffer));
-    memcpy(serializer->previous_section_name, buffer, sizeof(buffer));
+    // switch name back to parent section
+    stack_pop(&serializer->section_headers, NULL);              // remove last
     serializer->current_indentation--;
-
-    if (serializer->option == SERIALIZER_OPTION_SAVE) {
-        // TODO: need to save content in [serializer->section_content] to the correct location
-        // !!! can be in the middle of the file !!!
-    }
-
-    get_content_of_section(serializer);                         // get content of new section
+    get_content_of_section(serializer);
 }
 
 

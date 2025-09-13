@@ -68,8 +68,9 @@ i32 ds_append_char(dyn_str* s, const char c);
 // @brief Appends a formate string to the dynamic string.
 //          Works like printf-stale formating
 // @param fmt A format string (printf-style)
+// @param needed_space Returns how much space the formatted string needs
 // @param ... The arguments to format
-i32 ds_append_fmt(dyn_str* s, const char* fmt, ...);
+i32 ds_append_fmt(dyn_str* s, i32* needed_space, const char* fmt, ...);
 
 // ============================================================================================================================================
 // remove

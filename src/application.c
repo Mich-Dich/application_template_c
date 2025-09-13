@@ -58,7 +58,7 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
 
 
 
-#define USE_SUB_SECTION 0
+#define USE_SUB_SECTION 1
 
     i32 test_i32 = 200;
     b32 test_bool = true;
@@ -95,7 +95,7 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
     yaml_serializer_entry(&sy, "test_long_long", (void*)&test_long_long, "%Lf");
     
     char test_str[32000] = {0};
-    strcpy(test_str, "Since C doesn't support switching on strings directly, we need to use a different approach.");
+    strcpy(test_str, "C doesn't support switching on strings directly.");
     yaml_serializer_entry_str(&sy, "test_str", (void*)&test_str, sizeof(test_str));
 
 #if USE_SUB_SECTION
