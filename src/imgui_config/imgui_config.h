@@ -4,7 +4,7 @@
 #include "cimgui_impl.h"
 #include "platform/window.h"
 
-#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+// #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 #include "cimgui.h"
 
 #ifdef IMGUI_HAS_IMSTR
@@ -16,6 +16,23 @@
 #endif
 
 #define igGetIO igGetIO_Nil
+
+
+
+typedef enum {
+    FT_REGULAR,
+    FT_REGULAR_BIG,
+    FT_BOLD,
+    FT_BOLD_BIG,
+    FT_ITALIC,
+    FT_ITALIC_BIG,
+    FT_HEADER_0,
+    FT_HEADER_1,
+    FT_HEADER_2,
+    FT_GIANT,
+    FT_MONOSPACE_REGULAR,
+    FT_MONOSPACE_REGULAR_BIG,
+} font_type;
 
 
 // @brief Initializes the ImGui context and sets up platform/renderer bindings.
@@ -50,3 +67,8 @@ void imgui_end_frame(window_info* window_data);
 //        the ImGui viewport. Can be modified to change background color.
 // @return Pointer to the ImVec4 clear color (RGBA format)
 ImVec4* imgui_config_get_clear_color_ptr();
+
+
+
+ImFont* get_font(const font_type type);
+

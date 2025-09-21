@@ -24,6 +24,8 @@ void application_run();
 void application_set_fps_values(const u16 target_fps);
 
 
+// -------------------- GETTER/SETTER --------------------
+
 // get main renderer ptr
 renderer_state* application_get_renderer();
 

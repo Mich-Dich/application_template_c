@@ -18,3 +18,5 @@ void dashboard_update(const f32 delta_time);
 //
 void dashboard_draw(const f32 delta_time);
 
+//
+void dashboard_draw_init_UI(const f32 delta_time);

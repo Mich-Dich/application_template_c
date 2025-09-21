@@ -24,13 +24,17 @@
 #define PROFILE_RENDERER								0	// general level overview
 
 
-// log assert and validation behaviour?
-// NOTE - expr in assert/validation will still be executed
+// log assert behaviour?
+// NOTE - expr in assert will always be executed no mater if this is true or false
 #define ENABLE_LOGGING_FOR_ASSERTS                      1
 
 // toggle logging depending on build config
 #if defined(DEBUG)
+    // log validation behaviour?
+    // NOTE - expr in validation will always be executed no mater if this is true or false
     #define ENABLE_LOGGING_FOR_VALIDATION               1
 #else
+    // log validation behaviour?
+    // NOTE - expr in validation will always be executed no mater if this is true or false
     #define ENABLE_LOGGING_FOR_VALIDATION               0
 #endif

@@ -27,9 +27,9 @@ static struct sigaction     s_old_handlers[NSIG];
 
 static const int            s_crash_signals[] = {SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS};
 
-static unordered_map*       s_user_crash_callbacks = NULL;
+static unordered_map        s_user_crash_callbacks = {0};
 
-static u32                  s_next_handle = NULL; // Start handles from 1 (0 is invalid)
+static u32                  s_next_handle = 0; // Start handles from 1 (0 is invalid)
 
 
 #ifdef __cplusplus
@@ -101,15 +101,15 @@ static void resolve_address(void* addr, const char* executable, char** file, int
 // execute callbacks with highest key first. (as handle is iterated this will ensure reverse execution os subscribing order)
 static void execute_user_callbacks() {
 
-    if (!s_user_crash_callbacks || s_user_crash_callbacks->size == 0) return;
+    if (s_user_crash_callbacks.size == 0) return;
     
-    while (s_user_crash_callbacks->size > 0) {
+    while (s_user_crash_callbacks.size > 0) {
 
-        u32 max_handle = NULL;
+        u32 max_handle = 0;
         crash_callback_t callback_to_execute = NULL;
 
-        for (size_t i = 0; i < s_user_crash_callbacks->cap; i++) {      // Find the callback with the highest handle
-            node* current = s_user_crash_callbacks->buckets[i];
+        for (size_t i = 0; i < s_user_crash_callbacks.cap; i++) {      // Find the callback with the highest handle
+            node* current = s_user_crash_callbacks.buckets[i];
             while (current != NULL) {
                 u32 current_handle = *(u32*)current->key;
                 if (current_handle > max_handle) {
@@ -121,7 +121,7 @@ static void execute_user_callbacks() {
         }
         
         if (callback_to_execute) {                                      // Execute the callback and remove it from the map
-            u_map_erase(s_user_crash_callbacks, &max_handle);
+            u_map_erase(&s_user_crash_callbacks, &max_handle);
             callback_to_execute();
         }
     }
@@ -259,7 +259,7 @@ bool crash_handler_init() {
     
     signal(SIGPIPE, SIG_IGN);           // Ignore SIGPIPE to prevent crashes from broken pipes
     
-    s_user_crash_callbacks = u_map_create(2, u32_hash, u32_compare);
+    VALIDATE(u_map_init(&s_user_crash_callbacks, 2, u32_hash, u32_compare) == AT_SUCCESS, return false, "", "Failed to create u_map for crash callbacks")
     s_next_handle = 1;                  // Start handles from 1 (0 is invalid)
 
     return true;
@@ -274,17 +274,13 @@ void crash_handler_shutdown() {
     for (int i = 0; i < num_signals; i++)                                           // Restore original signal handlers
         sigaction(s_crash_signals[i], &s_old_handlers[s_crash_signals[i]], NULL);
 
-    
-    if (s_user_crash_callbacks) {
-        u_map_destroy(s_user_crash_callbacks);
-        s_user_crash_callbacks = NULL;
-    }
+    u_map_free(&s_user_crash_callbacks);
 }
 
 
 u32 crash_handler_subscribe_callback(crash_callback_t user_callback) {
 
-    if (!s_user_crash_callbacks || !s_next_handle || !user_callback) return 0;
+    if (!s_next_handle || !user_callback) return 0;
 
     const u32 handle = s_next_handle++;
 
@@ -294,7 +290,7 @@ u32 crash_handler_subscribe_callback(crash_callback_t user_callback) {
     *key = handle;
     
     // Insert into map
-    if (u_map_insert(s_user_crash_callbacks, key, (void*)user_callback) != AT_SUCCESS) {
+    if (u_map_insert(&s_user_crash_callbacks, key, (void*)user_callback) != AT_SUCCESS) {
         free(key);
         return 0;
     }
@@ -306,8 +302,8 @@ u32 crash_handler_subscribe_callback(crash_callback_t user_callback) {
 // Unsubscribe a crash callback
 void crash_handler_unsubscribe_callback(u32 handle) {
     
-    if (!s_user_crash_callbacks || !s_next_handle || handle == 0) return;
+    if (!s_next_handle || handle == 0) return;
     
-    u_map_erase(s_user_crash_callbacks, &handle);
+    u_map_erase(&s_user_crash_callbacks, &handle);
 
 }

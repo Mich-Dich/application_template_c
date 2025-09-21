@@ -147,6 +147,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS
     -DCIMGUI_USE_OPENGL3
     -DCIMGUI_USE_GLFW
+    $<$<CONFIG:Debug>:-DDEBUG>
 )
 
 # Set include directories for executable
@@ -156,6 +157,27 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/imgui
     ${BACKENDS_DIR}
 )
+
+# ------------------------------------------------------------------------------
+# Copy files to build directory
+# ------------------------------------------------------------------------------
+# Create a custom target to copy config files
+add_custom_target(copy_config ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/config
+        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config
+    COMMENT "Copying config files to build directory"
+)
+add_dependencies(${PROJECT_NAME} copy_config)           # Make the main target depend on the copy_config target
+
+# Create a custom target to copy config files
+add_custom_target(copy_assets ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets
+    COMMENT "Copying assets files to build directory"
+)
+add_dependencies(${PROJECT_NAME} copy_assets)           # Make the main target depend on the copy_assets target
 
 # ------------------------------------------------------------------------------
 # Link with GLFW, cimgui and system libs

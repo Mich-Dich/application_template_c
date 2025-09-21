@@ -48,29 +48,85 @@ else:
 
 
 
-def apply_settings(file_path="./config/app_settings.yml", cmake_file_path="./CMakeLists.txt"):
+# modify the ImGui implementation by search/replace
+def modify_imgui_impl_glfw():
+    """Modify the ImGui_ImplGlfw_SetWindowTitle function to add a prefix to window titles"""
+    # Determine the correct path to the imgui_impl_glfw.cpp file
+    backends_path = "./vendor/cimgui/imgui/backends"
+    examples_path = "./vendor/cimgui/imgui/examples"
+    
+    if os.path.exists(backends_path):
+        impl_glfw_path = os.path.join(backends_path, "imgui_impl_glfw.cpp")
+    elif os.path.exists(examples_path):
+        impl_glfw_path = os.path.join(examples_path, "imgui_impl_glfw.cpp")
+    else:
+        print("Could not find imgui_impl_glfw.cpp file")
+        return False
+    
     try:
-        with open(file_path, 'r') as stream:            # Load app settings
+        # Read the file content
+        with open(impl_glfw_path, 'r') as file:
+            content = file.read()
+        
+        # Define the pattern to find the function
+        pattern = r'(static void ImGui_ImplGlfw_SetWindowTitle\(ImGuiViewport\s*\*\s*viewport,\s*const char\s*\*\s*title\)\s*\{[^}]*glfwSetWindowTitle\(vd->Window, title\);\s*\})'
+        
+        # Define the replacement
+        replacement = r'''static void ImGui_ImplGlfw_SetWindowTitle(ImGuiViewport* viewport, const char* title)
+{
+    ImGui_ImplGlfw_ViewportData* vd = (ImGui_ImplGlfw_ViewportData*)viewport->PlatformUserData;
+    char new_title[4096] = {0};
+    snprintf(new_title, 4096, "ISW - %s", title);
+    glfwSetWindowTitle(vd->Window, new_title);
+}'''
+        
+        # Replace the function
+        new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+        
+        # Write the modified content back to the file
+        with open(impl_glfw_path, 'w') as file:
+            file.write(new_content)
+        
+        print(f"Successfully modified {impl_glfw_path}")
+        return True
+        
+    except Exception as e:
+        print(f"Error modifying imgui_impl_glfw.cpp: {str(e)}")
+        return False
+
+
+def apply_settings(application_name, file_path="./config/app_settings.yml", cmake_file_path="./CMakeLists.txt"):
+    try:
+        with open(file_path, 'r') as stream:
             data = yaml.safe_load(stream)
             app_name = data['general_settings']['name']
         
-        with open(cmake_file_path, 'r') as file:        # Read CMakeLists.txt content
+        with open(cmake_file_path, 'r') as file:
             content = file.read()
 
-        # Regex to replace the project name while preserving language and comments
-        # Matches: project(<old_name> C) optionally with trailing comment
+        # Updated regex to match project line with various parameters
         content = re.sub(
-            r'(^\s*project\s*\()\s*([^\s\)]+)(\s+C\s*\).*)',
-            r'\1' + app_name + r'\3',
+            r'^(.*project\s*\(\s*)[^\s\)#]+',  # Match up to first space, ), or comment
+            r'\1' + app_name,
             content,
             flags=re.MULTILINE
         )
 
-        with open(cmake_file_path, 'w') as file:        # Write the modified content back
+        with open(cmake_file_path, 'w') as file:
             file.write(content)
             
     except Exception as e:
-        utils.print_c(f"Error while applying settings: {str(e)}", "red")
+        print(f"Error while applying settings: {str(e)}")
+        sys.exit(1)
+
+
+def get_application_name(file_path="./config/app_settings.yml"):
+    try:
+        with open(file_path, 'r') as stream:
+            data = yaml.safe_load(stream)
+            return data['general_settings']['name']
+    except Exception as e:
+        print(f"Error while reading settings file: {str(e)}")
         sys.exit(1)
 
 
@@ -82,6 +138,9 @@ def get_application_name(file_path="./config/app_settings.yml"):
     except Exception as e:
         utils.print_c(f"Error while reading settings file: {str(e)}", "red")
         sys.exit(1)
+
+
+
 
 
 def main():
@@ -109,11 +168,13 @@ def main():
         git_util.update_submodule("vendor/glfw", "master")
         git_util.update_submodule("vendor/cimgui", "docking_inter")
 
+        modify_imgui_impl_glfw()        # modify the ImGui implementation
+
 
         utils.print_u("\nAPPLY SETTINGS")
         utils.print_c("Settings are defined at [./config/app_settings.yml]. after changing the settings, it is recommended to reexecute the setup script", "blue")
         application_name = get_application_name()
-        apply_settings()
+        apply_settings(application_name)
         print(f"name: {application_name}")
         
 

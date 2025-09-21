@@ -91,16 +91,16 @@ int i64_compare(const void* key1, const void* key2) {
 // ------------------------------------------------------------------------------------------
 
 // Map creation
-unordered_map* u_map_create(size_t capacity, hash_func hash_fn, key_compare_func key_cmp_fn) {
-    if (capacity == 0 || !hash_fn || !key_cmp_fn) return NULL;
+i32 u_map_init(unordered_map* map, size_t capacity, hash_func hash_fn, key_compare_func key_cmp_fn) {
+    if (capacity == 0 || !hash_fn || !key_cmp_fn) return AT_INVALID_ARGUMENT;
     
-    unordered_map* map = malloc(sizeof(unordered_map));
-    if (!map) return NULL;
+    map = malloc(sizeof(unordered_map));
+    if (!map) return AT_MEMORY_ERROR;
     
     map->buckets = calloc(capacity, sizeof(node*));
     if (!map->buckets) {
         free(map);
-        return NULL;
+        return AT_MEMORY_ERROR;
     }
     
     map->size = 0;
@@ -109,11 +109,11 @@ unordered_map* u_map_create(size_t capacity, hash_func hash_fn, key_compare_func
     map->hash_fn = hash_fn;
     map->key_cmp_fn = key_cmp_fn;
     
-    return map;
+    return AT_SUCCESS;
 }
 
-// Destroy function
-i32 u_map_destroy(unordered_map* map) {
+
+i32 u_map_free(unordered_map* map) {
     VALIDATE(map);
     
     for (size_t i = 0; i < map->cap; i++) {

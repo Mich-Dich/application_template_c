@@ -114,16 +114,16 @@ b8 get_content_of_section(serializer_yaml* serializer) {
     char line[STR_LINE_LEN] = {0};
     b8 found_section = true;                                // if hierarchy is not violated this will remain true
     const size_t number_of_headers = stack_size(&serializer->section_headers);
-    // LOG(Trace, "number_of_headers %zu", number_of_headers)
+    LOG(Trace, "number_of_headers %zu", number_of_headers)
     for (size_t x = 0; x < number_of_headers; x++) {
         
         char current_header[STR_SEC_LEN] = {0};
         stack_peek_at(&serializer->section_headers, x, &current_header);
-        // LOG(Trace, "searching for [%s]", current_header)
+        LOG(Trace, "searching for [%s]", current_header)
 
         while (fgets(line, sizeof(line), serializer->fp)) {
 
-            // LOG(Trace, "current line [%s]", line)
+            LOG(Trace, "current line [%s]", line)
             const u32 indent = get_indentation(line);
             if (indent < x) {                               // left header hierarchy
                 found_section = false;                      // hierarchy violated -> still needs to search for subsections
@@ -158,7 +158,7 @@ b8 get_content_of_section(serializer_yaml* serializer) {
 
     char current_header[STR_SEC_LEN] = {0};
     stack_peek(&serializer->section_headers, &current_header);
-    // LOG(Info, "current_header [%s] serializer->section_content: \n%s", current_header, serializer->section_content.data)
+    LOG(Info, "current_header [%s] serializer->section_content: \n%s", current_header, serializer->section_content.data)
 
     return true;
 }
@@ -504,7 +504,7 @@ b8 get_value(serializer_yaml* serializer, const char* key, const char* format, h
 
 
 // Core functions
-b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const char* file_name, const char* section_name, const serializer_option option) {
+b8 serializer_yaml_init(serializer_yaml* serializer, const char* dir_path, const char* file_name, const char* section_name, const serializer_option option) {
     
     ASSERT(dir_path != NULL, "", "failed to provide a directory path");
     ASSERT(file_name != NULL, "", "failed to provide a file name");
@@ -554,7 +554,7 @@ b8 yaml_serializer_init(serializer_yaml* serializer, const char* dir_path, const
 }
 
 
-void yaml_serializer_shutdown(serializer_yaml* serializer) {
+void serializer_yaml_shutdown(serializer_yaml* serializer) {
 
     if (serializer->option == SERIALIZER_OPTION_SAVE)       // dump content to file
         save_section(serializer);
@@ -572,7 +572,7 @@ void yaml_serializer_shutdown(serializer_yaml* serializer) {
 // Subsection function
 // ============================================================================================================================================
 
-void yaml_serializer_subsection_begin(serializer_yaml* serializer, const char* name) {
+void serializer_yaml_subsection_begin(serializer_yaml* serializer, const char* name) {
 
     ASSERT(strlen(name) < STR_SEC_LEN, "", "Provided section name is to long [%s] may size [%u]", name, STR_SEC_LEN)
 
@@ -585,7 +585,7 @@ void yaml_serializer_subsection_begin(serializer_yaml* serializer, const char* n
 }
 
 
-void yaml_serializer_subsection_end(serializer_yaml* serializer) {
+void serializer_yaml_subsection_end(serializer_yaml* serializer) {
     
     if (serializer->option == SERIALIZER_OPTION_SAVE)           // dump content to file
         save_section(serializer);
@@ -605,15 +605,15 @@ void yaml_serializer_subsection_end(serializer_yaml* serializer) {
     if (serializer->option == SERIALIZER_OPTION_SAVE)   set_value(serializer, key, format, (void*)value);       \
     else                                                get_value(serializer, key, format, (void*)value);
 
-void yaml_serializer_entry(serializer_yaml* serializer, const char* key, void* value, const char* format)     { PARSE_VALUE(format) }
+void serializer_yaml_entry(serializer_yaml* serializer, const char* key, void* value, const char* format)     { PARSE_VALUE(format) }
 
-void yaml_serializer_entry_int(serializer_yaml* serializer, const char* key, int* value)                        { PARSE_VALUE("%d") }
+void serializer_yaml_entry_int(serializer_yaml* serializer, const char* key, int* value)                        { PARSE_VALUE("%d") }
 
-void yaml_serializer_entry_f32(serializer_yaml* serializer, const char* key, f32* value)                        { PARSE_VALUE("%f") }
+void serializer_yaml_entry_f32(serializer_yaml* serializer, const char* key, f32* value)                        { PARSE_VALUE("%f") }
 
-void yaml_serializer_entry_b32(serializer_yaml* serializer, const char* key, b32* value)                        { PARSE_VALUE("%u") }
+void serializer_yaml_entry_b32(serializer_yaml* serializer, const char* key, b32* value)                        { PARSE_VALUE("%u") }
 
-void yaml_serializer_entry_str(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size)   {
+void serializer_yaml_entry_str(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size)   {
 
     if (serializer->option == SERIALIZER_OPTION_SAVE) {
         set_value(serializer, key, "%s", (void*)value);

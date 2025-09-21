@@ -72,4 +72,7 @@ void dashboard_draw(__attribute_maybe_unused__ const f32 delta_time) {
 }
 
 
+void dashboard_draw_init_UI(const f32 delta_time) {
 
+    // TODO: implement Init UI
+}

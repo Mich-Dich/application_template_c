@@ -24,8 +24,8 @@ typedef struct {
 
 
 // Creation with custom hash and compare functions
-unordered_map* u_map_create(size_t capacity, hash_func hash_fn, key_compare_func key_cmp_fn);
-i32 u_map_destroy(unordered_map* map);
+i32 u_map_init(unordered_map* map, size_t capacity, hash_func hash_fn, key_compare_func key_cmp_fn);
+i32 u_map_free(unordered_map* map);
 
 // Basic operations
 i32 u_map_resize(unordered_map* map);
