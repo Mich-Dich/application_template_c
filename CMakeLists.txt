@@ -108,7 +108,24 @@ target_compile_definitions(cimgui PUBLIC
     -DIMGUI_USER_CONFIG=\"${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/cimconfig.h\"
     -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
     -DIMGUI_IMPL_OPENGL_LOADER_GL3W
+    -DIMGUI_DISABLE_OBSOLETE_KEYIO=1
+    -DIMGUI_DISABLE_OBSOLETE_DRAWALL=1
 )
+
+# Check if we're using a newer version that requires different handling
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/imgui/imgui.h)
+    # Read the version from imgui.h to detect API level
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/imgui/imgui.h IMGUI_H_CONTENT)
+    if(IMGUI_H_CONTENT MATCHES "#define IMGUI_VERSION \"([0-9]+\\.[0-9]+)\"")
+        set(IMGUI_VERSION ${CMAKE_MATCH_1})
+        message(STATUS "Detected ImGui version: ${IMGUI_VERSION}")
+        
+        # For newer versions, you might need additional defines
+        if(IMGUI_VERSION VERSION_GREATER_EQUAL "1.89")
+            target_compile_definitions(cimgui PUBLIC -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1)
+        endif()
+    endif()
+endif()
 
 # For Windows: Remove the outer quotes and ensure proper escaping
 if(WIN32)

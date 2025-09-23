@@ -83,3 +83,20 @@ STATIC_ASSERT(sizeof(b32) == 4,   "Expected [b32] to be 4 byte");
 #define AT_NOT_INITIALIZED      EPERM   // Data not properly initialized
 #define AT_ALREADY_INITIALIZED  EEXIST  // Data already initialized
 #define AT_IO_ERROR             EIO     // Input/output error (for future file operations)
+
+
+static inline const char* error_to_str(const i32 error_code) {
+
+  switch (error_code) {
+    case AT_SUCCESS:              return "Success";
+    case AT_ERROR:                return "Generic error";
+    case AT_INVALID_ARGUMENT:     return "Invalid parameter passed";
+    case AT_MEMORY_ERROR:         return "Memory allocation failed";
+    case AT_RANGE_ERROR:          return "Position/length out of valid range";
+    case AT_FORMAT_ERROR:         return "Invalid format string";
+    case AT_NOT_INITIALIZED:      return "Data not properly initialized";
+    case AT_ALREADY_INITIALIZED:  return "Data already initialized";
+    case AT_IO_ERROR:             return "Input/output error (for future file operations)";
+    default:                      return "unknown error code";
+  }
+}

@@ -9,6 +9,7 @@
 
 #include "util/io/logger.h"
 #include "util/util.h"
+#include "util/data_structure/data_types.h"
 #include "util/system.h"
 
 #include "util/io/serializer_yaml.h"
