@@ -43,12 +43,6 @@ test_str: Since C doesn't support switching on strings directly, we need to use 
 
 #define STR_LINE_LEN    32000               // !!! longest possible length for a line in YAML file !!!
 
-// write indentation
-[[maybe_unused]] static void write_indentation(FILE* fp, u32 indentation) {
-    for (u32 x = 0; x < indentation; x++)
-        fputs("  ", fp);
-}
-
 
 // will get a char array like his: [char line[STR_LINE_LEN]]
 u32 get_indentation(const char *line) {
@@ -103,7 +97,7 @@ const char* skip_indentation(const char* line) {
 
 // get all lines that match the section and indentation and save them in [serializer->section_content]
 // lines inside [serializer->section_content] are "\n" terminated
-b8 get_content_of_section(serializer_yaml* serializer) {
+b8 get_content_of_section(SY* serializer) {
 
     // reset string
     ds_free(&serializer->section_content);
@@ -165,7 +159,7 @@ b8 get_content_of_section(serializer_yaml* serializer) {
 
 
 typedef struct {
-    serializer_yaml*    serializer;
+    SY*    serializer;
     const char*         start;
     const char*         end;
     dyn_str*            file_content;
@@ -234,7 +228,7 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
     }
     // LOG(Trace, "key_str: %s", key_str)
 
-    const size_t end_position = (sec_data->end - sec_data->file_content->data);                                         // Search for key in the section range
+    // const size_t end_position = (sec_data->end - sec_data->file_content->data);                                         // Search for key in the section range
     const char* section_start = sec_data->file_content->data + (sec_data->start - sec_data->file_content->data);        // Search only within the section bounds
     const char* key_location_in_file = str_search_range(section_start, key_str, (sec_data->end - sec_data->file_content->data));
     const u32 key_indent = get_indentation_reverse(key_location_in_file);
@@ -302,15 +296,15 @@ b8 add_or_update_entry(const char* line, size_t len, void* user_data) {
 }
 
 
-void save_section(serializer_yaml* serializer) {
+void save_section(SY* serializer) {
 
     // load entire file content into dyn_str
     dyn_str file_content = {0};
     const i32 result = ds_from_file(&file_content, serializer->fp);
     VALIDATE(!result, return, "", "Error reading file: %d", result)
 
-    // LOG(Info, "file_content: \n%s\n", file_content.data)
-    // LOG(Info, "section_content: \n%s\n", serializer->section_content.data)
+    LOG(Info, "file_content: \n%s\n", file_content.data)
+    LOG(Info, "section_content: \n%s\n", serializer->section_content.data)
 
     serializer_section_data sec_data = {0};
     sec_data.serializer = serializer;
@@ -375,6 +369,20 @@ typedef struct {
 
 // ================================= set value =================================
 
+    // Handle different format types
+#define FORMAT_VALUE(value_to_use)                                                                                                 \
+    if (strcmp(format, "%d") == 0)          snprintf(value_str, sizeof(value_str), format, *(int*)value_to_use);                   \
+    else if (strcmp(format, "%u") == 0)     snprintf(value_str, sizeof(value_str), format, *(unsigned int*)value_to_use);          \
+    else if (strcmp(format, "%ld") == 0)    snprintf(value_str, sizeof(value_str), format, *(long*)value_to_use);                  \
+    else if (strcmp(format, "%lu") == 0)    snprintf(value_str, sizeof(value_str), format, *(unsigned long*)value_to_use);         \
+    else if (strcmp(format, "%lld") == 0)   snprintf(value_str, sizeof(value_str), format, *(long long*)value_to_use);             \
+    else if (strcmp(format, "%llu") == 0)   snprintf(value_str, sizeof(value_str), format, *(unsigned long long*)value_to_use);    \
+    else if (strcmp(format, "%f") == 0)     snprintf(value_str, sizeof(value_str), format, *(float*)value_to_use);                 \
+    else if (strcmp(format, "%lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(double*)value_to_use);                \
+    else if (strcmp(format, "%Lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(long double*)value_to_use);           \
+    else if (strcmp(format, "%s") == 0)     snprintf(value_str, sizeof(value_str), format, (char*)value_to_use);                   \
+    else                                    snprintf(value_str, sizeof(value_str), format, *(handle*)value_to_use);
+
 // 
 b8 set_value_callback(const char* line, size_t len, void *user_data) {
 
@@ -395,21 +403,10 @@ b8 set_value_callback(const char* line, size_t len, void *user_data) {
     }
     
     // Handle different types appropriately
-    char value_str[STR_LINE_LEN] = {0};
     const char* format = loc_data->format;
-
-    // Handle different format types
-    if (strcmp(format, "%d") == 0)          snprintf(value_str, sizeof(value_str), format, *(int*)loc_data->value);
-    else if (strcmp(format, "%u") == 0)     snprintf(value_str, sizeof(value_str), format, *(unsigned int*)loc_data->value);
-    else if (strcmp(format, "%ld") == 0)    snprintf(value_str, sizeof(value_str), format, *(long*)loc_data->value);
-    else if (strcmp(format, "%lu") == 0)    snprintf(value_str, sizeof(value_str), format, *(unsigned long*)loc_data->value);
-    else if (strcmp(format, "%lld") == 0)   snprintf(value_str, sizeof(value_str), format, *(long long*)loc_data->value);
-    else if (strcmp(format, "%llu") == 0)   snprintf(value_str, sizeof(value_str), format, *(unsigned long long*)loc_data->value);
-    else if (strcmp(format, "%f") == 0)     snprintf(value_str, sizeof(value_str), format, *(float*)loc_data->value);
-    else if (strcmp(format, "%lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(double*)loc_data->value);
-    else if (strcmp(format, "%Lf") == 0)    snprintf(value_str, sizeof(value_str), format, *(long double*)loc_data->value);
-    else if (strcmp(format, "%s") == 0)     snprintf(value_str, sizeof(value_str), format, (char*)loc_data->value);
-    else                                    snprintf(value_str, sizeof(value_str), format, *(handle*)loc_data->value);
+    
+    char value_str[STR_LINE_LEN] = {0};
+    FORMAT_VALUE(loc_data->value);
 
     // Replace the old value strinf inside the line with the new one
     ds_remove_range(loc_data->section_content, offset, value_len);
@@ -421,7 +418,7 @@ b8 set_value_callback(const char* line, size_t len, void *user_data) {
 }
 
 // tries to find a line containing the key, if found it will update the value, if not it will append a new line at the end
-b8 set_value(serializer_yaml* serializer, const char* key, const char* format, void* value) {
+b8 set_value(SY* serializer, const char* key, const char* format, void* value) {
     
     if (!serializer || !key || !format || !value) return false;
 
@@ -443,7 +440,7 @@ b8 set_value(serializer_yaml* serializer, const char* key, const char* format, v
         
         // Append the formatted value
         char value_str[STR_LINE_LEN];
-        snprintf(value_str, sizeof(value_str), format, value);
+        FORMAT_VALUE(value);
 
         strcat(new_line, value_str);
         strcat(new_line, "\n");
@@ -452,17 +449,19 @@ b8 set_value(serializer_yaml* serializer, const char* key, const char* format, v
     return loc_data.found;
 }
 
+#undef FORMAT_VALUE
+
 // ================================= get value =================================
 
 b8 get_value_callback(const char* line, size_t len, void *user_data) {
 
     ds_iterator_data* loc_data = (ds_iterator_data*)user_data;
 
+    // LOG(Trace, "searching for [%s] in [%.*s]", loc_data->key, (int)(strchr(line, '\n') - line), line)
+
     // Check if this line starts with target key followed by a colon
     if (len <= strlen(loc_data->key) || memcmp(line, loc_data->key, strlen(loc_data->key)) != 0 || line[strlen(loc_data->key)] != ':')
         return true;
-        
-    // LOG(Trace, " pointer [%p] searching for [%s] in [%.*s]", line, loc_data->key, (int)(strchr(line, '\n') - line), line)
         
     const char* value_start = line + strlen(loc_data->key) + 1;                     // Find the position after the colon
     while (value_start < line || (*value_start == ' ' || *value_start == '\t'))     // Skip any whitespace after the colon
@@ -477,12 +476,15 @@ b8 get_value_callback(const char* line, size_t len, void *user_data) {
     memcpy(value_str, value_start, value_len);
     value_str[value_len] = '\0';
     
+    // LOG(Trace, "value_len [%s]", &value_str)
     loc_data->found = sscanf(value_str, loc_data->format, loc_data->value) == 1;          // Parse the value
+    // LOG(Trace, "format [%s] value_len [%s]", loc_data->format, loc_data->value)
+
     return !loc_data->found;
 }
 
 // tries to find a line containing the key, if found it will return true and set [char* line] to the line containing the key
-b8 get_value(serializer_yaml* serializer, const char* key, const char* format, handle* value) {
+b8 get_value(SY* serializer, const char* key, const char* format, handle* value) {
 
     if (!serializer || !key || !format || !value) return false;
 
@@ -504,7 +506,7 @@ b8 get_value(serializer_yaml* serializer, const char* key, const char* format, h
 
 
 // Core functions
-b8 serializer_yaml_init(serializer_yaml* serializer, const char* dir_path, const char* file_name, const char* section_name, const serializer_option option) {
+b8 sy_init(SY* serializer, const char* dir_path, const char* file_name, const char* section_name, const serializer_option option) {
     
     ASSERT(dir_path != NULL, "", "failed to provide a directory path");
     ASSERT(file_name != NULL, "", "failed to provide a file name");
@@ -554,7 +556,7 @@ b8 serializer_yaml_init(serializer_yaml* serializer, const char* dir_path, const
 }
 
 
-void serializer_yaml_shutdown(serializer_yaml* serializer) {
+void sy_shutdown(SY* serializer) {
 
     if (serializer->option == SERIALIZER_OPTION_SAVE)       // dump content to file
         save_section(serializer);
@@ -572,7 +574,7 @@ void serializer_yaml_shutdown(serializer_yaml* serializer) {
 // Subsection function
 // ============================================================================================================================================
 
-void serializer_yaml_subsection_begin(serializer_yaml* serializer, const char* name) {
+void sy_subsection_begin(SY* serializer, const char* name) {
 
     ASSERT(strlen(name) < STR_SEC_LEN, "", "Provided section name is to long [%s] may size [%u]", name, STR_SEC_LEN)
 
@@ -585,7 +587,7 @@ void serializer_yaml_subsection_begin(serializer_yaml* serializer, const char* n
 }
 
 
-void serializer_yaml_subsection_end(serializer_yaml* serializer) {
+void sy_subsection_end(SY* serializer) {
     
     if (serializer->option == SERIALIZER_OPTION_SAVE)           // dump content to file
         save_section(serializer);
@@ -605,21 +607,21 @@ void serializer_yaml_subsection_end(serializer_yaml* serializer) {
     if (serializer->option == SERIALIZER_OPTION_SAVE)   set_value(serializer, key, format, (void*)value);       \
     else                                                get_value(serializer, key, format, (void*)value);
 
-void serializer_yaml_entry(serializer_yaml* serializer, const char* key, void* value, const char* format)     { PARSE_VALUE(format) }
+void sy_entry(SY* serializer, const char* key, void* value, const char* format)     { PARSE_VALUE(format) }
 
-void serializer_yaml_entry_int(serializer_yaml* serializer, const char* key, int* value)                        { PARSE_VALUE("%d") }
+void sy_entry_int(SY* serializer, const char* key, int* value)                        { PARSE_VALUE("%d") }
 
-void serializer_yaml_entry_f32(serializer_yaml* serializer, const char* key, f32* value)                        { PARSE_VALUE("%f") }
+void sy_entry_f32(SY* serializer, const char* key, f32* value)                        { PARSE_VALUE("%f") }
 
-void serializer_yaml_entry_b32(serializer_yaml* serializer, const char* key, b32* value)                        { PARSE_VALUE("%u") }
+void sy_entry_b32(SY* serializer, const char* key, b32* value)                        { PARSE_VALUE("%u") }
 
-void serializer_yaml_entry_str(serializer_yaml* serializer, const char* key, char* value, size_t buffer_size)   {
+void sy_entry_str(SY* serializer, const char* key, char* value, size_t buffer_size)   {
 
     if (serializer->option == SERIALIZER_OPTION_SAVE) {
         set_value(serializer, key, "%s", (void*)value);
     } else {
         char temp[STR_LINE_LEN] = {0};
-        if (get_value(serializer, key, "%s", (handle*)&temp)) {
+        if (get_value(serializer, key, "%[^\n]", (handle*)&temp)) {
             strncpy(value, temp, buffer_size);
             value[buffer_size - 1] = '\0'; // Ensure null termination
         }
@@ -627,4 +629,39 @@ void serializer_yaml_entry_str(serializer_yaml* serializer, const char* key, cha
 }
 
 #undef PARSE_VALUE
+
+
+void sy_loop(SY* serializer, const char* name, void* data_structure, size_t element_size, sy_loop_callback_t callback, sy_loop_callback_at_t accessor, sy_loop_callback_append_t append, sy_loop_DS_size_callback_t data_structure_size) {
+    
+    // TODO: try to find the section containing [name]
+
+    if (serializer->option == SERIALIZER_OPTION_SAVE) {
+
+        const size_t DS_size = data_structure_size(data_structure);
+        for (u64 x = 0; x < DS_size; x++) {
+
+            // TODO: load content of current element in to section_content if available
+
+            void* local_buffer = NULL;
+            const i32 result = accessor(data_structure, x, local_buffer);
+            VALIDATE(result == AT_SUCCESS && local_buffer, return, "", "Failed to access element at [%d] result [%s]", x, error_to_str(result))
+            callback(serializer, local_buffer);
+
+            // TODO: save section_content to file
+        }
+        return;
+    }
+
+    // only loading from here
+    void* local_buffer = malloc(element_size);
+    // while ( --- ) {  // TODO: iterate as long as elements are in file
+
+        // TODO: load content of current element in to section_content
+    
+        memset(local_buffer, 0, element_size);
+        callback(serializer, local_buffer);
+        append(data_structure, local_buffer);           // append new element to back
+    // }
+
+}
 

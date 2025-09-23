@@ -166,15 +166,18 @@ i32 ds_append_fmt(dyn_str* s, i32* needed_space, const char* fmt, ...) {
     // determine required size
     va_list ap2;
     va_copy(ap2, ap);
-    needed_space = vsnprintf(NULL, 0, fmt, ap2);
+
+    i32 local_buffer = 0;
+    i32* needed_buffer = (needed_space) ? needed_space : &local_buffer;
+    *needed_buffer = vsnprintf(NULL, 0, fmt, ap2);
     va_end(ap2);
 
-    if (needed_space < 0) {
+    if (*needed_buffer < 0) {
         va_end(ap);
         return AT_FORMAT_ERROR;
     }
 
-    if (needed_space > 0) {
+    if (*needed_buffer > 0) {
 
         const i32 result = ds_ensure(s, (size_t)needed_space);
         if (result != AT_SUCCESS) {

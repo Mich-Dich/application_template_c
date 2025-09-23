@@ -2,6 +2,7 @@
 
 #include <cimgui.h>
 #include "cimgui_impl.h"
+#include "util/data_structure/data_types.h"
 #include "platform/window.h"
 
 // #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
@@ -17,6 +18,12 @@
 
 #define igGetIO igGetIO_Nil
 
+extern f32 g_font_size;
+extern f32 g_big_font_size;
+extern f32 g_font_size_header_0;
+extern f32 g_font_size_header_1;
+extern f32 g_font_size_header_2;
+extern f32 g_font_size_giant;
 
 
 typedef enum {
@@ -70,5 +77,5 @@ ImVec4* imgui_config_get_clear_color_ptr();
 
 
 
-ImFont* get_font(const font_type type);
+ImFont* imgui_config_get_font(const font_type type);
 

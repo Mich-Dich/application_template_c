@@ -20,16 +20,16 @@
 static ImVec4 s_clear_color;
 
 static unordered_map s_font_map;
-static f32 g_font_size = 15.f;
-static f32 g_big_font_size = 18.f;
-static f32 g_font_size_header_0 = 19.f;
-static f32 g_font_size_header_1 = 23.f;
-static f32 g_font_size_header_2 = 27.f;
-static f32 g_font_size_giant = 60.f;
+f32 g_font_size = 15.f;
+f32 g_big_font_size = 18.f;
+f32 g_font_size_header_0 = 19.f;
+f32 g_font_size_header_1 = 23.f;
+f32 g_font_size_header_2 = 27.f;
+f32 g_font_size_giant = 60.f;
 static ImGuiContext* s_context_imgui = NULL;
 
 
-ImFont* get_font(const font_type type) {
+ImFont* imgui_config_get_font(const font_type type) {
     
     void* value = NULL;
     if (u_map_find(&s_font_map, (void*)(uintptr_t)type, &value) == AT_SUCCESS)
