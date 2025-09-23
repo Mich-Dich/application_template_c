@@ -74,5 +74,53 @@ void dashboard_draw(__attribute_maybe_unused__ const f32 delta_time) {
 
 void dashboard_draw_init_UI(const f32 delta_time) {
 
-    // TODO: implement Init UI
+    static f32 total_time = 0.f;
+    total_time += delta_time;
+    if (total_time > 1.f)
+        total_time = 0.f;
+    
+    ImGuiViewport* viewport = igGetMainViewport();
+    
+    // Set window to cover the entire viewport
+    const ImVec2 pos_vec = {0};
+    igSetNextWindowPos(viewport->WorkPos, ImGuiCond_Always, pos_vec);
+    igSetNextWindowSize(viewport->WorkSize, ImGuiCond_Always);
+    
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking | 
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | 
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+    
+    igPushStyleVar_Vec2(ImGuiStyleVar_WindowPadding, pos_vec);
+    igPushStyleVar_Float(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    
+    igBegin("Initialization", NULL, window_flags);
+    {
+        // Center content in the window
+        ImVec2 center_pos = {0};
+        center_pos.x = (viewport->WorkSize.x - 200) * 0.5f;
+        center_pos.y = (viewport->WorkSize.y - 100) * 0.5f;
+        igSetCursorPos(center_pos);
+        
+        igPushFont(imgui_config_get_font(FT_GIANT), g_font_size_giant);
+        if (total_time < (1.f/4.f))
+            igText("Initializing");
+        else if (total_time < (2.f/4.f))
+            igText("Initializing.");
+        else if (total_time < (3.f/4.f))
+            igText("Initializing..");
+        else
+            igText("Initializing...");
+        igPopFont();
+
+    #if 0   // currently not working, dont know why
+
+        ImVec4 main_color = {1.f, 1.f, 1.f, 1.0f};
+        ImVec4 backdrop_color = {0.2f, 0.2f, 0.2f, 1.0f};
+        UI_loading_indicator_circle("##loading_indicator", 30, 13, 5, &main_color, &backdrop_color);
+    #endif
+
+    }
+    igEnd();
+    
+    igPopStyleVar(2);
 }

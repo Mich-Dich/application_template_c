@@ -13,6 +13,7 @@
 #include <threads.h>
 #include <limits.h>
 
+// #include "util/data_structure/data_types.h"
 #include "util/data_structure/dynamic_string.h"
 #include "util/system.h"
 
@@ -448,7 +449,7 @@ b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* 
 }
 
 
-b8 logger_shutdown() {
+void logger_shutdown() {
 
 #if USE_MULTI_THREADING
     /* Signal shutdown to all waiters (consumers & producers) */
@@ -486,8 +487,6 @@ b8 logger_shutdown() {
     free(s_format_current);
     s_log_file_path = NULL;
     s_format_current = NULL;
-
-    return true;
 }
 
 
@@ -541,7 +540,7 @@ void logger_set_format(const char* new_format) {
                     case 'Q': {                                                                                         // thread id or label
                         const char* label = lookup_thread_label(message->thread_id);
                         if (label)  ds_append_str(&out, label);
-                        else        ds_append_fmt(&out, "%lu", message->thread_id);
+                        else        ds_append_fmt(&out, NULL, TYPE_FORMAT(message->thread_id), message->thread_id);
                     } break;
                     case 'F': ds_append_str(&out, message->function_name); break;                                       // function
                     case 'A': ds_append_str(&out, message->file_name); break;                                           // file

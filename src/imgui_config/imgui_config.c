@@ -39,7 +39,7 @@ ImFont* imgui_config_get_font(const font_type type) {
 }
 
 char* format_path(const char* format, const char* path) {
-    static char buffer[512];
+    static char buffer[PATH_MAX];
     snprintf(buffer, sizeof(buffer), format, path);
     return buffer;
 }
