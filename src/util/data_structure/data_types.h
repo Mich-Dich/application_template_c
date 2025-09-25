@@ -96,7 +96,6 @@ STATIC_ASSERT(sizeof(b32) == 4,   "Expected [b32] to be 4 byte");
 #define CONFIG_DIR              	"config"        // Directory for configuration files
 #define CONTENT_DIR             	"content"       // Directory for content files
 #define SOURCE_DIR              	"src"           // Directory for source code
-// #define ASSET_DIR                   util_get_executable_path() / "assets"
 
 
 

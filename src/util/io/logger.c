@@ -412,8 +412,8 @@ b8 logger_init(const char* log_msg_format, const b8 log_to_console, const char* 
     s_log_to_console = log_to_console;
     logger_set_format(log_msg_format);
 
-    const char* exec_path = get_executable_path();
-    if (exec_path == NULL) return false;
+    char exec_path[PATH_MAX] = {0};
+    if (get_executable_path(exec_path, sizeof(exec_path))) return false;
 
     char file_path[PATH_MAX];
     memset(file_path, '\0', sizeof(file_path));

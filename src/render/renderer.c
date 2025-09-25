@@ -24,14 +24,13 @@
         LOG(Trace, "OpenGL vendor: %s", glGetString(GL_VENDOR));
         LOG(Trace, "OpenGL renderer: %s", glGetString(GL_RENDERER));
 
-        // renderer->initialized = true;
-        // LOG_INIT
+        renderer->initialized = true;
+        LOG_INIT
         return true;
     }
 
     void renderer_shutdown(renderer_state* renderer) {
         
-        // imgui_shutdown();
         renderer->initialized = false;
         LOG_SHUTDOWN
     }
@@ -42,14 +41,10 @@
 
     void renderer_begin_frame(renderer_state* renderer) {
         
+        VALIDATE(renderer->initialized, return, "", "Renderer not initalized")
         if (!renderer->initialized) return;
-        imgui_begin_frame();
 
-        // ImGui demo code
-        if (igBegin("My Window", NULL, 0)) {
-            igText("Hello, world!");
-            igEnd();
-        }
+        imgui_begin_frame();
     }
 
     void renderer_end_frame(window_info* window) {

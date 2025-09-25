@@ -97,37 +97,7 @@ system_time get_system_time() {
 // executable path
 // ------------------------------------------------------------------------------------------------------------------
 
-static char executable_path[PATH_MAX] = {0};
-
-
-const char* get_executable_path() {
-    if (executable_path[0] != '\0') {
-        return executable_path;
-    }
-
-    char path[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len == -1) {
-        perror("readlink");
-        return NULL;
-    }
-    path[len] = '\0';
-
-    char path_copy[PATH_MAX];
-    strncpy(path_copy, path, sizeof(path_copy) - 1);
-    path_copy[sizeof(path_copy) - 1] = '\0';
-
-    char* dir = dirname(path_copy);
-    if (dir != NULL) {
-        strncpy(executable_path, dir, sizeof(executable_path) - 1);
-        executable_path[sizeof(executable_path) - 1] = '\0';
-    }
-
-    return executable_path;
-}
-
-
-int get_executable_path_buf(char *out, size_t outlen) {
+int get_executable_path(char *out, size_t outlen) {
 
     char path[PATH_MAX];
     ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);

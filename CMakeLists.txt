@@ -56,6 +56,8 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/${CONFIG_PLATFORM_DI
 # Find OpenGL package
 find_package(OpenGL REQUIRED)
 
+find_package(PNG REQUIRED)
+
 # ------------------------------------------------------------------------------
 # Vendor project: GLFW (as submodule)
 # ------------------------------------------------------------------------------
@@ -172,6 +174,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/cimgui/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb_image
     ${BACKENDS_DIR}
 )
 
@@ -199,7 +202,7 @@ add_dependencies(${PROJECT_NAME} copy_assets)           # Make the main target d
 # ------------------------------------------------------------------------------
 # Link with GLFW, cimgui and system libs
 # ------------------------------------------------------------------------------
-target_link_libraries(${PROJECT_NAME} PRIVATE cimgui glfw OpenGL::GL)
+target_link_libraries(${PROJECT_NAME} PRIVATE cimgui glfw OpenGL::GL PNG::PNG)
 
 # On Linux we need extra system libs (X11, pthread, etc.)
 if(UNIX AND NOT APPLE)

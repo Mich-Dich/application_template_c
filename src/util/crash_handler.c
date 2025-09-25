@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <limits.h>
 #include <execinfo.h>
 #include <ucontext.h>
 #include <errno.h>
@@ -163,7 +164,8 @@ static void crash_handler(int sig, siginfo_t* info, void* ucontext) {
         case SIGBUS:  sig_name = "SIGBUS (Bus Error)"; break;
     }
 
-    const char* exe_path = get_executable_path();
+    char exe_path[PATH_MAX] = {0};
+    get_executable_path(exe_path, sizeof(exe_path));
     
     dyn_str crash_msg;
     ds_init(&crash_msg);

@@ -16,7 +16,7 @@
 // DEV-ONLY
 
 
-static application_state app_state;
+static application_state app_state = {0};
 
 
 // ============================================================================================================================================
@@ -87,9 +87,10 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
 
     do {        // load app settings
     
-        const char* exec_path = get_executable_path();
+        char exec_path[PATH_MAX] = {0};
+        get_executable_path(exec_path, sizeof(exec_path));
 
-        char loc_file_path[PATH_MAX];
+        char loc_file_path[PATH_MAX] = {0};
         memset(loc_file_path, '\0', sizeof(loc_file_path));
         const int written = snprintf(loc_file_path, sizeof(loc_file_path), "%s/%s", exec_path, "config");
         VALIDATE(written >= 0 && (size_t)written < sizeof(loc_file_path), return false, "", "Path too long: %s/%s\n", exec_path, "config");
@@ -103,7 +104,7 @@ b8 application_init(__attribute_maybe_unused__ int argc, __attribute_maybe_unuse
     } while (0);
 
     ASSERT(create_window(&app_state.window, 800, 600, display_name), "", "Failed to create window")
-    // ASSERT(renderer_init(&app_state.renderer), "", "Failed to initialize renderer")
+    ASSERT(renderer_init(&app_state.renderer), "", "Failed to initialize renderer")
     imgui_init(&app_state.window);
 
     dashboard_crash_callback = crash_handler_subscribe_callback(dashboard_on_crash);
@@ -118,7 +119,7 @@ void application_shutdown() {
     crash_handler_unsubscribe_callback(dashboard_crash_callback);
 
     imgui_shutdown();
-    // renderer_shutdown(&app_state.renderer);
+    renderer_shutdown(&app_state.renderer);
     destroy_window(&app_state.window);
     
     LOG_SHUTDOWN
@@ -155,11 +156,9 @@ void application_run() {
         
         dashboard_update(s_delta_time);
         
-        // renderer_begin_frame(&app_state.renderer);
-        imgui_begin_frame();
+        renderer_begin_frame(&app_state.renderer);
         dashboard_draw(s_delta_time);        
-        imgui_end_frame(&app_state.window);
-        // renderer_end_frame(&app_state.window);
+        renderer_end_frame(&app_state.window);
         
         limit_fps();                        // sets [s_delta_time]
     }
