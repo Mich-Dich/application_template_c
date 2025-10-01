@@ -16,55 +16,6 @@ static bool showAnotherWindow = false;
 image_t test_image = {0};
 
 
-b8 read_stable_diffusion_parameters(const char* filename, char** parameters) {
-    FILE* fp = fopen(filename, "rb");
-    if (!fp) return false;
-
-    png_byte header[8];
-    fread(header, 1, 8, fp);
-    if (png_sig_cmp(header, 0, 8)) {
-        fclose(fp);
-        return false;
-    }
-
-    png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    png_infop info_ptr = png_create_info_struct(png_ptr);
-    
-    if (!png_ptr || !info_ptr) {
-        if (png_ptr) png_destroy_read_struct(&png_ptr, NULL, NULL);
-        fclose(fp);
-        return false;
-    }
-
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-        fclose(fp);
-        return false;
-    }
-
-    png_init_io(png_ptr, fp);
-    png_set_sig_bytes(png_ptr, 8);
-    png_read_info(png_ptr, info_ptr);
-
-    png_textp text_ptr = NULL;
-    int num_text = 0;
-    png_get_text(png_ptr, info_ptr, &text_ptr, &num_text);
-
-    for (int i = 0; i < num_text; i++) {
-        if (strcmp(text_ptr[i].key, "parameters") == 0) {
-            *parameters = strdup(text_ptr[i].text);
-            png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-            fclose(fp);
-            return true;
-        }
-    }
-
-    png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-    fclose(fp);
-    return false;
-}
-
-
 //
 b8 dashboard_init() {
 
@@ -74,19 +25,6 @@ b8 dashboard_init() {
     snprintf(image_path, sizeof(image_path), "%s/assets/images/test_image.png", exe_path);
     LOG(Trace, "Image at [%s]", image_path)
     VALIDATE(image_create_from_file(&test_image, image_path, IF_RGBA, false), , "", "Failed to create image");
-
-    // Read Stable Diffusion parameters
-    char* parameters = NULL;
-    if (read_stable_diffusion_parameters(image_path, &parameters)) {
-        LOG(Trace, "Stable Diffusion Parameters:");
-        LOG(Trace, "%s", parameters);
-        
-        // Store parameters for later use in ImGui
-        // You'll want to store this in a global variable or struct
-        // global_image_parameters = parameters; // Assuming you have this variable
-    } else {
-        LOG(Warn, "No Stable Diffusion parameters found in image");
-    }
 
     return true;
 }
